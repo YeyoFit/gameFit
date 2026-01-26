@@ -1,0 +1,90 @@
+
+import { createClient } from '@supabase/supabase-js';
+import { NextResponse } from 'next/server';
+
+// Create a Supabase client with the SERVICE ROLE key
+const supabaseAdmin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+export async function POST(request: Request) {
+    try {
+        const { userId, requesterId } = await request.json();
+
+        if (!userId || !requesterId) {
+            return NextResponse.json({ error: 'Missing userId or requesterId' }, { status: 400 });
+        }
+
+        // 1. Verify Verification (Admin only)
+        const { data: requesterProfile, error: profileError } = await supabaseAdmin
+            .from('profiles')
+            .select('role')
+            .eq('id', requesterId)
+            .single();
+
+        if (profileError || !requesterProfile) {
+            return NextResponse.json({ error: 'Unauthorized: Could not verify requester role' }, { status: 401 });
+        }
+
+        const { role } = requesterProfile;
+        if (role !== 'admin' && role !== 'super_admin') {
+            return NextResponse.json({ error: 'Unauthorized: Insufficient permissions' }, { status: 403 });
+        }
+
+        // 2. MANUAL CASCADE DELETE (Safe fallback if DB ON DELETE CASCADE is missing)
+
+        // A. Delete all logs for workouts owned by this user
+        // First get workout IDs
+        const { data: userWorkouts, error: fetchWorkoutsError } = await supabaseAdmin
+            .from('workouts')
+            .select('id')
+            .eq('user_id', userId);
+
+        if (fetchWorkoutsError) {
+            console.error("Error fetching user workouts for delete:", fetchWorkoutsError);
+            // Continue? If we fail to fetch, we might fail to delete logs, which will block user deletion.
+            // Let's try to proceed to main delete, maybe cascade exists?
+        }
+
+        if (userWorkouts && userWorkouts.length > 0) {
+            const workoutIds = userWorkouts.map(w => w.id);
+
+            // Delete logs for these workouts
+            const { error: deleteLogsError } = await supabaseAdmin
+                .from('workout_logs')
+                .delete()
+                .in('workout_id', workoutIds);
+
+            if (deleteLogsError) console.error("Error deleting user logs:", deleteLogsError);
+
+            // Delete workouts
+            const { error: deleteWorkoutsError } = await supabaseAdmin
+                .from('workouts')
+                .delete()
+                .eq('user_id', userId);
+
+            if (deleteWorkoutsError) console.error("Error deleting user workouts:", deleteWorkoutsError);
+        }
+
+        // B. Delete Profile (if strictly required before auth, though auth usually cascades)
+        await supabaseAdmin.from('profiles').delete().eq('id', userId);
+
+
+        // 3. Delete from Auth (The Source of Truth)
+        const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(
+            userId
+        );
+
+        if (deleteError) {
+            console.error("Error deleting auth user:", deleteError);
+            return NextResponse.json({ error: deleteError.message }, { status: 500 });
+        }
+
+        return NextResponse.json({ message: 'User deleted successfully' });
+
+    } catch (error: any) {
+        console.error("Delete API error:", error);
+        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    }
+}
