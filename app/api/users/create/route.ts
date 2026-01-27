@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { sendWelcomeEmail } from '@/lib/emailService';
 
 // Initialize Supabase Admin Client (Service Role)
 // This strictly requires the SERVICE_ROLE_KEY to bypass RLS and direct Auth management
@@ -72,6 +73,18 @@ export async function POST(req: Request) {
 
             if (profileUpdateError) {
                 return NextResponse.json({ error: 'User created but profile update failed: ' + profileUpdateError.message }, { status: 500 });
+            }
+
+            // 4. Send Welcome Email
+            if (newUser.user.email) {
+                // We don't await this to fail the request, but we log the result
+                console.log(`Sending welcome email to ${newUser.user.email}...`);
+                const emailResult = await sendWelcomeEmail(newUser.user.email, password);
+                if (!emailResult.success) {
+                    console.error("Failed to send welcome email:", emailResult.error);
+                } else {
+                    console.log("Welcome email sent successfully.");
+                }
             }
         }
 
