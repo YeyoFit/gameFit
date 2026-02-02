@@ -166,6 +166,57 @@ export default function EditWorkoutPage() {
         setLoading(false);
     };
 
+    const handleSaveTemplate = async () => {
+        if (selectedExercises.length === 0) {
+            alert("No hay ejercicios para guardar en la plantilla.");
+            return;
+        }
+
+        const templateName = prompt("Nombre de la nueva plantilla:");
+        if (!templateName) return;
+
+        setSaving(true);
+        try {
+            // 1. Create Template
+            const { data: tmpl, error: tError } = await supabase
+                .from('workout_templates')
+                .insert({ name: templateName })
+                .select()
+                .single();
+
+            if (tError) throw tError;
+
+            // 2. Insert Items
+            const items = selectedExercises.map(ex => ({
+                template_id: tmpl.id,
+                exercise_id: ex.exerciseId,
+                exercise_order: ex.order,
+                target_sets: ex.sets,
+                target_reps: ex.targetReps,
+                tempo: ex.tempo,
+                rest_time: ex.rest
+            }));
+
+            const { error: itemsError } = await supabase
+                .from('workout_template_exercises')
+                .insert(items);
+
+            if (itemsError) throw itemsError;
+
+            alert("Plantilla guardada correctamente!");
+
+            // Refresh templates list
+            const { data: newTempls } = await supabase.from('workout_templates').select('*').order('name');
+            setAvailableTemplates(newTempls || []);
+
+        } catch (err: any) {
+            console.error(err);
+            alert("Error al guardar plantilla: " + err.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const handleUpdateWorkout = async () => {
         if (!workoutId) return;
         if (selectedExercises.length === 0) {
@@ -436,6 +487,12 @@ export default function EditWorkoutPage() {
                             className="text-sm font-bold text-primary flex items-center hover:underline"
                         >
                             <Download className="w-4 h-4 mr-1" /> Cargar Plantilla
+                        </button>
+                        <button
+                            onClick={handleSaveTemplate}
+                            className="text-sm font-bold text-green-600 flex items-center hover:underline ml-4"
+                        >
+                            <Save className="w-4 h-4 mr-1" /> Guardar como Plantilla
                         </button>
                     </div>
 
