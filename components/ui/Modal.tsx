@@ -9,9 +9,10 @@ interface ModalProps {
     onClose: () => void;
     children: React.ReactNode;
     title?: string;
+    isVideo?: boolean;
 }
 
-export function Modal({ isOpen, onClose, children, title }: ModalProps) {
+export function Modal({ isOpen, onClose, children, title, isVideo = false }: ModalProps) {
     const overlayRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -57,7 +58,7 @@ export function Modal({ isOpen, onClose, children, title }: ModalProps) {
                 </div>
 
                 {/* Body */}
-                <div className="p-0 bg-black flex justify-center items-center min-h-[300px]">
+                <div className={`w-full ${isVideo ? 'p-0 bg-black flex justify-center items-center min-h-[300px]' : 'p-6 bg-white'}`}>
                     {children}
                 </div>
             </div>

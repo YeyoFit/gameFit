@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus, Play, Calendar, Clock, Loader2, Trash2, Shield, FileText, Users } from "lucide-react";
+import { Plus, Play, Calendar, Clock, Loader2, Trash2, Shield, FileText, Users, Copy } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -26,6 +26,12 @@ export default function DashboardPage() {
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
     const [unreadFeedback, setUnreadFeedback] = useState<DbWorkout | null>(null);
+
+    // Duplicate State
+    const [duplicateContext, setDuplicateContext] = useState<DbWorkout | null>(null);
+    const [copyDate, setCopyDate] = useState(new Date().toISOString().split('T')[0]);
+    const [copying, setCopying] = useState(false);
+
     const router = useRouter();
 
     useEffect(() => {
@@ -94,6 +100,46 @@ export default function DashboardPage() {
             .eq('id', currentId);
 
         // Update local list state to reflect read status if needed, though mostly visual
+    };
+
+    const handleDuplicateClick = (workout: DbWorkout) => {
+        setDuplicateContext(workout);
+        setCopyDate(new Date().toISOString().split('T')[0]); // Default to today
+    };
+
+    const handleConfirmDuplicate = async () => {
+        if (!duplicateContext) return;
+        setCopying(true);
+
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error("No user found");
+
+            const res = await fetch('/api/workouts/copy', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sourceWorkoutId: duplicateContext.id,
+                    targetDate: copyDate,
+                    userId: user.id
+                })
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                alert("Error al copiar: " + (data.error || "Unknown error"));
+            } else {
+                // Success! Redirect to new workout
+                router.push(`/workout/${data.newWorkoutId}`);
+            }
+        } catch (e: any) {
+            console.error("Copy error:", e);
+            alert("Error al intentar copiar.");
+        } finally {
+            setCopying(false);
+            setDuplicateContext(null);
+        }
     };
 
     if (authLoading) {
@@ -239,6 +285,8 @@ export default function DashboardPage() {
                                 </div>
                             </div>
 
+
+
                             <div className="mt-4 md:mt-0 flex items-center md:pl-8 border-t md:border-t-0 md:border-l border-gray-100 pt-4 md:pt-0 space-x-2">
                                 <Link
                                     href={`/workout/${session.id}`}
@@ -246,6 +294,14 @@ export default function DashboardPage() {
                                 >
                                     Ver Sesión <Play className="w-4 h-4 ml-2 fill-current" />
                                 </Link>
+
+                                <button
+                                    onClick={() => handleDuplicateClick(session)}
+                                    className="bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-600 p-2 rounded transition-colors"
+                                    title="Repetir este entrenamiento"
+                                >
+                                    <Copy className="w-5 h-5" />
+                                </button>
 
                                 {isAdmin && (
                                     <button
@@ -290,6 +346,51 @@ export default function DashboardPage() {
                         >
                             ¡Entendido!
                         </button>
+                    </div>
+                </Modal>
+            )}
+
+            {/* Duplicate Modal */}
+            {duplicateContext && (
+                <Modal
+                    isOpen={!!duplicateContext}
+                    onClose={() => setDuplicateContext(null)}
+                    title="Repetir Entrenamiento"
+                >
+                    <div className="space-y-4">
+                        <p className="text-gray-600">
+                            Estás a punto de crear una copia de <strong>"{duplicateContext.name}"</strong> para realizarla de nuevo.
+                        </p>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Fecha de realización
+                            </label>
+                            <input
+                                type="date"
+                                value={copyDate}
+                                onChange={(e) => setCopyDate(e.target.value)}
+                                className="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
+                            />
+                        </div>
+
+                        <div className="flex justify-end space-x-3 mt-6">
+                            <button
+                                onClick={() => setDuplicateContext(null)}
+                                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md font-medium"
+                                disabled={copying}
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleConfirmDuplicate}
+                                disabled={copying}
+                                className="px-6 py-2 bg-primary hover:bg-blue-900 text-white rounded-md font-bold flex items-center shadow-lg"
+                            >
+                                {copying ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Copy className="w-4 h-4 mr-2" />}
+                                {copying ? "Copiando..." : "Crear Copia"}
+                            </button>
+                        </div>
                     </div>
                 </Modal>
             )}
