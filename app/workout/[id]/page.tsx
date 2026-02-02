@@ -414,7 +414,14 @@ export default function WorkoutExecutionPage() {
                         )}
 
                         {(role === 'admin' || role === 'super_admin') && (
-                            <div className="flex items-center ml-4">
+                            <div className="flex items-center ml-4 space-x-2">
+                                <Link
+                                    href={`/dashboard/edit-workout/${workout.id}`}
+                                    className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded text-sm font-bold transition-colors flex items-center"
+                                >
+                                    <MessageSquare className="w-4 h-4 mr-1" /> {/* Using MessageSquare as placeholder or import Edit */}
+                                    Editar Plan
+                                </Link>
                                 {confirmDelete ? (
                                     <>
                                         <button

@@ -151,7 +151,7 @@ export default function ClientDashboardPage() {
                                             </div>
                                         </Link>
                                         <div className="flex items-center space-x-4">
-                                            <Link href={`/workout/${workout.id}`} className="flex items-center text-sm text-gray-500 hover:text-primary">
+                                            <Link href={`/dashboard/edit-workout/${workout.id}`} className="flex items-center text-sm text-gray-500 hover:text-primary">
                                                 <span className="mr-1 hidden sm:inline">Edit</span>
                                                 <Edit3 className="h-4 w-4" />
                                             </Link>
