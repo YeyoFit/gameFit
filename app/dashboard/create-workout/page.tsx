@@ -35,6 +35,7 @@ export default function CreateWorkoutPage() {
 
     const [workoutName, setWorkoutName] = useState("");
     const [workoutDate, setWorkoutDate] = useState(new Date().toISOString().split('T')[0]);
+    const [occurrences, setOccurrences] = useState<number>(1);
 
     // Client Selection (Admin only)
     const [clients, setClients] = useState<Profile[]>([]);
@@ -158,7 +159,8 @@ export default function CreateWorkoutPage() {
                 .insert({
                     user_id: targetUserId,
                     name: workoutName,
-                    date: workoutDate
+                    date: workoutDate,
+                    occurrences: occurrences
                 })
                 .select()
                 .single();
@@ -170,21 +172,25 @@ export default function CreateWorkoutPage() {
             const logsToInsert: any[] = [];
 
             selectedExercises.forEach(ex => {
-                for (let i = 1; i <= ex.sets; i++) {
-                    logsToInsert.push({
-                        workout_id: workout.id,
-                        exercise_id: ex.exerciseId,
-                        set_number: i,
-                        // Proposed schema fields:
-                        exercise_order: ex.order,
-                        target_reps: ex.targetReps,
-                        tempo: ex.tempo,
-                        rest_time: ex.rest,
-                        // Initial values
-                        weight: null,
-                        reps: null,
-                        completed: false
-                    });
+                // Loop through occurrences (Days)
+                for (let d = 1; d <= occurrences; d++) {
+                    for (let i = 1; i <= ex.sets; i++) {
+                        logsToInsert.push({
+                            workout_id: workout.id,
+                            exercise_id: ex.exerciseId,
+                            set_number: i,
+                            day_number: d, // Add day number
+                            // Proposed schema fields:
+                            exercise_order: ex.order,
+                            target_reps: ex.targetReps,
+                            tempo: ex.tempo,
+                            rest_time: ex.rest,
+                            // Initial values
+                            weight: null,
+                            reps: null,
+                            completed: false
+                        });
+                    }
                 }
             });
 
@@ -264,6 +270,17 @@ export default function CreateWorkoutPage() {
                             type="date"
                             value={workoutDate}
                             onChange={e => setWorkoutDate(e.target.value)}
+                            className="w-full border border-gray-300 rounded p-2 focus:ring-primary focus:border-primary"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Días a realizar</label>
+                        <input
+                            type="number"
+                            min="1"
+                            max="7"
+                            value={occurrences}
+                            onChange={e => setOccurrences(parseInt(e.target.value) || 1)}
                             className="w-full border border-gray-300 rounded p-2 focus:ring-primary focus:border-primary"
                         />
                     </div>

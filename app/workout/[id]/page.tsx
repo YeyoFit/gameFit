@@ -16,6 +16,7 @@ type DbWorkout = {
     id: string;
     name: string;
     date: string;
+    occurrences: number;
     coach_feedback?: string;
 };
 
@@ -28,7 +29,15 @@ export default function WorkoutExecutionPage() {
     const workoutId = params?.id as string;
 
     const [workout, setWorkout] = useState<DbWorkout | null>(null);
-    const [exercises, setExercises] = useState<Exercise[]>([]);
+    // Modified: exercises is now derived or we just store "current day" exercises?
+    // Let's store ALL days data to allow switching without refetching.
+    const [dayData, setDayData] = useState<Record<number, Exercise[]>>({});
+    const [activeDay, setActiveDay] = useState(1);
+
+    // Legacy support: if we just use 'exercises' for current view, it might be simpler?
+    // But we need to switch context.
+    // Let's use a computed property for rendering.
+
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const { role } = useAuth();
@@ -86,6 +95,7 @@ export default function WorkoutExecutionPage() {
                     target_weight,
                     tempo,
                     rest_time,
+                    day_number,
                     exercise_order,
                     exercises (
                         id,
@@ -100,10 +110,24 @@ export default function WorkoutExecutionPage() {
             if (logsError) {
                 console.error("Error fetching logs:", logsError);
             } else if (logsData) {
-                // 3. Group logs by Exercise
-                const grouped = new Map<string, Exercise>();
+                const daysMap: Record<number, Exercise[]> = {};
+
+                // Initialize map for all possible days (1 to occurrences)
+                const totalDays = woData.occurrences || 1;
+                for (let i = 1; i <= totalDays; i++) {
+                    daysMap[i] = [];
+                }
+
+                // Temporary map for grouping
+                const dayGroups = new Map<number, Map<string, Exercise>>();
 
                 logsData.forEach((log: any) => {
+                    const d = log.day_number || 1;
+                    if (!dayGroups.has(d)) {
+                        dayGroups.set(d, new Map());
+                    }
+                    const grouped = dayGroups.get(d)!;
+
                     const exId = log.exercise_id;
                     const exDetails = log.exercises;
 
@@ -122,7 +146,6 @@ export default function WorkoutExecutionPage() {
                     }
 
                     const group = grouped.get(exId)!;
-
                     const isCompleted = log.completed || false;
 
                     group.logs.push({
@@ -132,50 +155,72 @@ export default function WorkoutExecutionPage() {
                         prevWeight: undefined,
                         prevReps: undefined,
                         completed: isCompleted,
-                        isPR: false // Initialize PR status
+                        isPR: false
                     });
                 });
 
-                // Update setsTarget based on actual logs count
-                for (const group of grouped.values()) {
-                    group.setsTarget = group.logs.length.toString();
+                // Finalize structure
+                // Iterate created map to fill daysMap
+                dayGroups.forEach((groups, dayNum) => {
+                    // Update setsTarget
+                    for (const group of groups.values()) {
+                        group.setsTarget = group.logs.length.toString();
+                    }
+                    daysMap[dayNum] = Array.from(groups.values()).sort((a, b) => a.order.localeCompare(b.order, undefined, { numeric: true }));
+                });
+
+                // Ensure all days explicitly exist even if empty (though create-workout should create logs)
+                for (let i = 1; i <= totalDays; i++) {
+                    if (!daysMap[i]) daysMap[i] = [];
                 }
 
+                setDayData(daysMap);
+
+
                 // 4. Fetch History (Max Weight Ever)
-                const uniqueExerciseIds = Array.from(grouped.values()).map(e => e.id);
+                const uniqueExerciseIds: string[] = [];
+                const seenExIds = new Set<string>();
+
+                dayGroups.forEach((groups) => {
+                    groups.forEach((ex) => {
+                        if (!seenExIds.has(ex.id)) {
+                            seenExIds.add(ex.id);
+                            uniqueExerciseIds.push(ex.id);
+                        }
+                    });
+                });
+
                 const historyMap: HistoryMap = {};
 
-                await Promise.all(uniqueExerciseIds.map(async (exId) => {
-                    // Fetch highest weight EVER for this exercise recorded up to now
-                    // Note: In a real simplified SQL without aggregates, we sort by weight desc
-                    const { data: histLogs } = await supabase
-                        .from('workout_logs')
-                        .select('weight')
-                        .eq('exercise_id', exId)
-                        .eq('completed', true)
-                        // Important: exclude current workout if we are editing it, to allow re-breaking PRs?
-                        // Actually, if we compare against ALL history including before today, 
-                        // we really want "Best Weight Before TODAY" usually.
-                        // But let's say "Best Weight Ever" found in logs.
-                        .neq('workout_id', workoutId) // Exclude current session's logs from "History"
-                        .order('weight', { ascending: false })
-                        .limit(1);
+                if (uniqueExerciseIds.length > 0) {
+                    await Promise.all(uniqueExerciseIds.map(async (exId) => {
+                        // Fetch highest weight EVER for this exercise recorded up to now
+                        const { data: histLogs } = await supabase
+                            .from('workout_logs')
+                            .select('weight')
+                            .eq('exercise_id', exId)
+                            .eq('completed', true)
+                            .neq('workout_id', workoutId)
+                            .order('weight', { ascending: false })
+                            .limit(1);
 
-                    if (histLogs && histLogs.length > 0) {
-                        historyMap[exId] = {
-                            maxWeight: histLogs[0].weight || 0
-                        };
-                    } else {
-                        historyMap[exId] = { maxWeight: 0 };
-                    }
-                }));
+                        if (histLogs && histLogs.length > 0) {
+                            historyMap[exId] = {
+                                maxWeight: histLogs[0].weight || 0
+                            };
+                        } else {
+                            historyMap[exId] = { maxWeight: 0 };
+                        }
+                    }));
+                }
 
                 setHistory(historyMap);
 
                 // Merge History into Exercises only for "prev logs" visualization if we wanted
                 // But for now we just store it to compare
-                const initializedExercises = Array.from(grouped.values()).sort((a, b) => a.order.localeCompare(b.order, undefined, { numeric: true }));
-                setExercises(initializedExercises);
+                // (Logic kept same for history)
+                // setExercises is removed, we used setDayData above
+
             }
 
             setLoading(false);
@@ -185,48 +230,48 @@ export default function WorkoutExecutionPage() {
     }, [workoutId]);
 
     const handleLogChange = (exerciseId: string, setIndex: number, field: 'weight' | 'reps' | 'completed', value: number | boolean | null) => {
-        setExercises(prev => prev.map(ex => {
-            if (ex.id !== exerciseId) return ex;
+        setDayData(prev => {
+            const currentDayExercises = prev[activeDay] ? [...prev[activeDay]] : [];
+            const exIndex = currentDayExercises.findIndex(e => e.id === exerciseId);
 
-            const newLogs = [...ex.logs];
+            if (exIndex === -1) return prev;
+
+            const newEx = { ...currentDayExercises[exIndex] };
+            const newLogs = [...newEx.logs];
             const currentLog = { ...newLogs[setIndex], [field]: value };
             newLogs[setIndex] = currentLog;
+            newEx.logs = newLogs;
 
-            // Check if we should trigger timer & PR check (if completing)
-            // Only trigger if manually marking completed and it wasn't before
+            currentDayExercises[exIndex] = newEx;
+
+            // Side Effects (Timer, PR) - kept roughly same but adapting context
             if (field === 'completed' && value === true) {
-                // 1. Timer Logic
-                if (ex.rest > 0) {
-                    setTimerSeconds(ex.rest);
-                    setTimerExerciseName(ex.name);
+                if (newEx.rest > 0) {
+                    setTimerSeconds(newEx.rest);
+                    setTimerExerciseName(newEx.name);
                     setTimerOpen(true);
                 }
-
-                // 2. PR Logic
                 const liftedWeight = Number(currentLog.weight || 0);
                 const historicalMax = history[exerciseId]?.maxWeight || 0;
-
-                // Simple PR Check: Lifted > Max Ever
-                // Also ensure we haven't already marked it as PR to avoid double counting if user toggles off/on
                 if (liftedWeight > historicalMax && liftedWeight > 0) {
                     if (!currentLog.isPR) {
-                        // It IS a new PR!
                         triggerConfetti();
                         currentLog.isPR = true;
                         setNewPRs(p => p + 1);
                     }
                 }
             } else if (field === 'completed' && value === false) {
-                // Creating logic to "un-PR" if they uncheck?
-                // Maybe too complex for now, let's keep it simple. PR count might be slightly off if they toggle a lot.
                 if (currentLog.isPR) {
                     currentLog.isPR = false;
                     setNewPRs(p => Math.max(0, p - 1));
                 }
             }
 
-            return { ...ex, logs: newLogs };
-        }));
+            return {
+                ...prev,
+                [activeDay]: currentDayExercises
+            };
+        });
     };
 
     const triggerConfetti = () => {
@@ -262,12 +307,16 @@ export default function WorkoutExecutionPage() {
         try {
             const logsToUpdate: any[] = [];
 
-            exercises.forEach(ex => {
+
+            const exercisesToSave = dayData[activeDay] || [];
+
+            exercisesToSave.forEach(ex => {
                 ex.logs.forEach(log => {
                     logsToUpdate.push({
                         workout_id: workout.id,
                         exercise_id: ex.id,
                         set_number: log.setNumber,
+                        day_number: activeDay,
                         weight: log.weight,
                         reps: log.reps,
                         completed: log.completed || false
@@ -284,6 +333,7 @@ export default function WorkoutExecutionPage() {
                     })
                     .eq('workout_id', log.workout_id)
                     .eq('exercise_id', log.exercise_id)
+                    .eq('day_number', activeDay) // Important
                     .eq('set_number', log.set_number);
 
                 if (error) console.error("Error saving log:", error);
@@ -434,13 +484,37 @@ export default function WorkoutExecutionPage() {
             </div>
 
             {/* Main Header */}
-            <div className="mb-10">
+            <div className="mb-6">
                 <h1 className="text-4xl sm:text-5xl font-bold text-primary mb-2">{workout.name}</h1>
                 <div className="flex items-center text-muted text-lg space-x-2">
                     <Calendar className="w-5 h-5" />
                     <span>{workout.date}</span>
+                    {workout.occurrences > 1 && (
+                        <span className="bg-blue-100 text-primary text-xs font-bold px-2 py-1 rounded ml-2">
+                            {workout.occurrences} Días
+                        </span>
+                    )}
                 </div>
             </div>
+
+            {/* Day Tabs */}
+            {(workout.occurrences > 1) && (
+                <div className="flex space-x-2 mb-8 overflow-x-auto pb-2">
+                    {Array.from({ length: workout.occurrences }, (_, i) => i + 1).map(d => (
+                        <button
+                            key={d}
+                            onClick={() => setActiveDay(d)}
+                            className={`px-4 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-colors ${activeDay === d
+                                ? 'bg-primary text-white shadow-md'
+                                : 'bg-white text-gray-500 hover:bg-gray-100 border border-gray-200'
+                                }`}
+                        >
+                            Día {d}
+                        </button>
+                    ))}
+                </div>
+            )}
+
 
             {/* Session Inputs (Header Card) */}
             <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-10 flex flex-wrap gap-8 items-end">
@@ -473,12 +547,12 @@ export default function WorkoutExecutionPage() {
 
             {/* Exercises List */}
             <div className="space-y-4">
-                {exercises.length === 0 ? (
+                {(!dayData[activeDay] || dayData[activeDay].length === 0) ? (
                     <div className="text-center py-10 bg-gray-50 rounded border border-dashed border-gray-300 text-muted">
-                        No exercises logged for this workout yet.
+                        No exercises logged for Day {activeDay}.
                     </div>
                 ) : (
-                    exercises.map((ex, idx) => (
+                    dayData[activeDay].map((ex, idx) => (
                         <div key={ex.id}>
                             <ExerciseCard
                                 exercise={ex}
