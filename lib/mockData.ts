@@ -16,6 +16,8 @@ export type LogSet = {
     prevReps?: number;   // For placeholder
     completed: boolean;
     isPR?: boolean; // New property for PR tracking
+    videoUrl?: string;
+    coachComment?: string;
 };
 
 export type Exercise = {

@@ -1,18 +1,20 @@
 "use client";
 
 import { Exercise, LogSet } from "@/lib/mockData";
-import { Play, Trophy } from "lucide-react";
+import { Play, Trophy, Camera, Video, Loader2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Modal } from "@/components/ui/Modal";
+import { supabase } from "@/lib/supabaseClient";
 
 interface ExerciseCardProps {
     exercise: Exercise;
-    onLogChange: (exerciseId: string, setIndex: number, field: 'weight' | 'reps' | 'completed', value: number | boolean | null) => void;
+    onLogChange: (exerciseId: string, setIndex: number, field: 'weight' | 'reps' | 'completed' | 'videoUrl', value: any) => void;
 }
 
 export function ExerciseCard({ exercise, onLogChange }: ExerciseCardProps) {
     const logs = exercise.logs; // Use logs from props
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [uploadingSetIndex, setUploadingSetIndex] = useState<number | null>(null);
 
     // Real-time stats
     const [stats, setStats] = useState({
@@ -47,6 +49,37 @@ export function ExerciseCard({ exercise, onLogChange }: ExerciseCardProps) {
         // Allow empty string to clear input
         const numValue = value === '' ? null : parseFloat(value);
         onLogChange(exercise.id, index, field, numValue);
+    };
+
+    const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, setIndex: number) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        setUploadingSetIndex(setIndex);
+
+        try {
+            const fileName = `${Date.now()}_${file.name}`;
+            const { data, error } = await supabase.storage
+                .from('workout-videos')
+                .upload(fileName, file);
+
+            if (error) {
+                console.error("Upload error:", error);
+                alert("Error uploading video.");
+                return;
+            }
+
+            const { data: publicData } = supabase.storage
+                .from('workout-videos')
+                .getPublicUrl(fileName);
+
+            onLogChange(exercise.id, setIndex, 'videoUrl', publicData.publicUrl);
+
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setUploadingSetIndex(null);
+        }
     };
 
     return (
@@ -101,15 +134,16 @@ export function ExerciseCard({ exercise, onLogChange }: ExerciseCardProps) {
 
                     {/* Input Log */}
                     <div>
-                        <div className="grid grid-cols-[30px_1fr_1fr_50px] gap-2 mb-2">
+                        <div className="grid gap-2 mb-2" style={{ gridTemplateColumns: '30px 1fr 1fr 50px 40px' }}>
                             <div className="font-bold text-gray-500 text-center text-xs">#</div>
                             <div className="font-bold text-primary text-center text-sm">Weight</div>
                             <div className="font-bold text-primary text-center text-sm">Reps</div>
                             <div className="font-bold text-primary text-center text-sm">✓</div>
+                            <div className="font-bold text-primary text-center text-xs">🎥</div>
                         </div>
 
                         {logs.map((log, idx) => (
-                            <div key={idx} className={`grid grid-cols-[30px_1fr_1fr_50px] gap-2 mb-2 items-center transition-colors ${log.completed ? 'opacity-50' : ''}`}>
+                            <div key={idx} className={`grid gap-2 mb-2 items-center transition-colors ${log.completed ? 'opacity-50' : ''}`} style={{ gridTemplateColumns: '30px 1fr 1fr 50px 40px' }}>
                                 <div className="font-bold text-gray-400 text-sm text-center">{idx + 1}</div>
                                 <div className="relative w-full">
                                     <input
@@ -141,6 +175,25 @@ export function ExerciseCard({ exercise, onLogChange }: ExerciseCardProps) {
                                         onChange={(e) => onLogChange(exercise.id, idx, 'completed', e.target.checked)}
                                         className="w-6 h-6 text-green-600 rounded focus:ring-green-500 border-gray-300 cursor-pointer"
                                     />
+                                </div>
+                                <div className="flex justify-center items-center">
+                                    {uploadingSetIndex === idx ? (
+                                        <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                                    ) : log.videoUrl ? (
+                                        <a href={log.videoUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700">
+                                            <Video className="w-6 h-6" />
+                                        </a>
+                                    ) : (
+                                        <label className="cursor-pointer text-gray-400 hover:text-gray-600 flex items-center justify-center w-full h-full">
+                                            <Camera className="w-5 h-5" />
+                                            <input
+                                                type="file"
+                                                accept="video/*"
+                                                className="hidden"
+                                                onChange={(e) => handleFileUpload(e, idx)}
+                                            />
+                                        </label>
+                                    )}
                                 </div>
                             </div>
                         ))}

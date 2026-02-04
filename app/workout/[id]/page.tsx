@@ -97,6 +97,7 @@ export default function WorkoutExecutionPage() {
                     rest_time,
                     day_number,
                     exercise_order,
+                    video_url,
                     exercises (
                         id,
                         name,
@@ -155,7 +156,8 @@ export default function WorkoutExecutionPage() {
                         prevWeight: undefined,
                         prevReps: undefined,
                         completed: isCompleted,
-                        isPR: false
+                        isPR: false,
+                        videoUrl: log.video_url
                     });
                 });
 
@@ -229,7 +231,7 @@ export default function WorkoutExecutionPage() {
         fetchData();
     }, [workoutId]);
 
-    const handleLogChange = (exerciseId: string, setIndex: number, field: 'weight' | 'reps' | 'completed', value: number | boolean | null) => {
+    const handleLogChange = (exerciseId: string, setIndex: number, field: 'weight' | 'reps' | 'completed' | 'videoUrl', value: any) => {
         setDayData(prev => {
             const currentDayExercises = prev[activeDay] ? [...prev[activeDay]] : [];
             const exIndex = currentDayExercises.findIndex(e => e.id === exerciseId);
@@ -319,7 +321,8 @@ export default function WorkoutExecutionPage() {
                         day_number: activeDay,
                         weight: log.weight,
                         reps: log.reps,
-                        completed: log.completed || false
+                        completed: log.completed || false,
+                        video_url: log.videoUrl // Add this
                     });
                 });
             });
@@ -329,11 +332,12 @@ export default function WorkoutExecutionPage() {
                     .update({
                         weight: log.weight,
                         reps: log.reps,
-                        completed: log.completed
+                        completed: log.completed,
+                        video_url: log.video_url // Add this
                     })
                     .eq('workout_id', log.workout_id)
                     .eq('exercise_id', log.exercise_id)
-                    .eq('day_number', activeDay) // Important
+                    .eq('day_number', activeDay)
                     .eq('set_number', log.set_number);
 
                 if (error) console.error("Error saving log:", error);
