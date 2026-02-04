@@ -341,18 +341,20 @@ export default function CreateWorkoutPage() {
                 <div className="space-y-4">
                     <div className="flex justify-between items-center mb-4">
                         <h2 className="text-xl font-bold text-gray-800">Ejercicios</h2>
-                        <button
-                            onClick={() => setIsTemplateModalOpen(true)}
-                            className="text-sm font-bold text-primary flex items-center hover:underline"
-                        >
-                            <Download className="w-4 h-4 mr-1" /> Cargar Plantilla
-                        </button>
-                        <button
-                            onClick={handleSaveTemplate}
-                            className="text-sm font-bold text-green-600 flex items-center hover:underline ml-4"
-                        >
-                            <Save className="w-4 h-4 mr-1" /> Guardar como Plantilla
-                        </button>
+                        <div className="flex items-center space-x-4">
+                            <button
+                                onClick={() => setIsTemplateModalOpen(true)}
+                                className="text-sm font-bold text-primary flex items-center hover:underline"
+                            >
+                                <Download className="w-4 h-4 mr-1" /> Cargar Plantilla
+                            </button>
+                            <button
+                                onClick={handleSaveTemplate}
+                                className="text-sm font-bold text-green-600 flex items-center hover:underline"
+                            >
+                                <Save className="w-4 h-4 mr-1" /> Guardar como Plantilla
+                            </button>
+                        </div>
                     </div>
 
                     {selectedExercises

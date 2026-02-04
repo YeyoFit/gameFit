@@ -23,8 +23,8 @@ export function ExerciseCard({ exercise, onLogChange }: ExerciseCardProps) {
     });
 
     useEffect(() => {
-        // Calculate stats whenever logs change
-        const completedLogs = logs.filter(l => (l.weight !== null && l.weight > 0) && (l.reps !== null && l.reps > 0));
+        // Calculate stats whenever logs change. Only count COMPLETED sets.
+        const completedLogs = logs.filter(l => l.completed && (l.weight !== null && l.weight > 0) && (l.reps !== null && l.reps > 0));
 
         if (completedLogs.length === 0) {
             setStats({ avgWeight: 0, totalTonnage: 0, avgReps: 0, totalReps: 0 });
@@ -160,7 +160,12 @@ export function ExerciseCard({ exercise, onLogChange }: ExerciseCardProps) {
                             </div>
                             <div>
                                 <span className="block text-gray-500">Tonnage</span>
-                                <span className="block font-bold text-primary text-lg">{(stats.totalTonnage / 1000).toFixed(1)}k</span>
+                                <span className="block font-bold text-primary text-lg">
+                                    {stats.totalTonnage >= 1000
+                                        ? `${(stats.totalTonnage / 1000).toFixed(1)}k`
+                                        : `${stats.totalTonnage}kg`
+                                    }
+                                </span>
                             </div>
                         </div>
                     </div>

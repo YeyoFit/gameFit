@@ -93,7 +93,7 @@ export function RestTimer({ isOpen, onClose, initialSeconds, exerciseName }: Res
                     <div className="text-primary font-bold text-lg mb-6 truncate px-4">{exerciseName}</div>
 
                     <div className="text-7xl font-black text-gray-900 font-mono mb-8 tabular-nums">
-                        {Math.max(0, timeLeft)}<span className="text-xl text-gray-400">s</span>
+                        {formatTime(Math.max(0, timeLeft))}
                     </div>
 
                     <div className="flex justify-center items-center space-x-6 mb-8">
