@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { db } from "@/lib/firebase";
+import { collection, query, where, orderBy, getDocs } from "firebase/firestore";
 import { Loader2 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
@@ -27,30 +28,37 @@ export function ClientReports({ userId, userName }: ClientReportsProps) {
 
         const fetchData = async () => {
             setLoading(true);
-            const { data: measurements, error } = await supabase
-                .from('client_measurements')
-                .select('*')
-                .eq('user_id', userId)
-                .order('recorded_at', { ascending: true });
+            try {
+                const q = query(
+                    collection(db, 'client_measurements'),
+                    where('user_id', '==', userId),
+                    orderBy('recorded_at', 'asc')
+                );
 
-            if (error) {
-                console.error(error);
-            } else if (measurements) {
-                const processed = measurements.map(m => {
-                    const bf = m.body_fat_percentage || 0;
-                    const fatMass = (m.weight * bf) / 100;
-                    const leanMass = m.weight - fatMass;
-                    return {
-                        date: m.recorded_at,
-                        weight: m.weight,
-                        bodyFat: bf,
-                        leanMass: parseFloat(leanMass.toFixed(2)),
-                        fatMass: parseFloat(fatMass.toFixed(2))
-                    };
-                });
-                setData(processed);
+                const querySnapshot = await getDocs(q);
+                const measurements: any[] = [];
+                querySnapshot.forEach(doc => measurements.push(doc.data()));
+
+                if (measurements.length > 0) {
+                    const processed = measurements.map(m => {
+                        const bf = m.body_fat_percentage || 0;
+                        const fatMass = (m.weight * bf) / 100;
+                        const leanMass = m.weight - fatMass;
+                        return {
+                            date: m.recorded_at,
+                            weight: m.weight,
+                            bodyFat: bf,
+                            leanMass: parseFloat(leanMass.toFixed(2)),
+                            fatMass: parseFloat(fatMass.toFixed(2))
+                        };
+                    });
+                    setData(processed);
+                }
+            } catch (error) {
+                console.error("Error fetching measurements:", error);
+            } finally {
+                setLoading(false);
             }
-            setLoading(false);
         };
 
         fetchData();

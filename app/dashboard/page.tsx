@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Plus, Play, Calendar, Clock, Loader2, Trash2, Shield, FileText, Users, Copy } from "lucide-react";
-import { supabase } from "@/lib/supabaseClient";
+import { db } from "@/lib/firebase"; // Firebase import
+import { collection, query, where, orderBy, getDocs, deleteDoc, doc, updateDoc, addDoc, writeBatch, getDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
@@ -44,25 +45,50 @@ export default function DashboardPage() {
         async function fetchHistory() {
             setLoading(true);
 
-            // Admin sees all, User sees own.
-            // Note: RLS should enforce this eventually, but we can also filter here.
-            let query = supabase
-                .from('workouts')
-                .select('*')
-                .eq('user_id', user!.id) // ALWAYS filter by own ID, even for admins (they can use Admin panel for others)
-                .order('date', { ascending: false });
+            try {
+                // Determine if we need to order by date desc
+                // Firestore requires an index for compound queries (where + orderBy).
+                // Without index, this might fail initially. 
+                // We'll try user_id filter + client sort or create index link.
 
-            const { data, error } = await query;
+                const workoutsRef = collection(db, 'workouts');
+                const q = query(
+                    workoutsRef,
+                    where('user_id', '==', user!.uid),
+                    orderBy('date', 'desc')
+                );
 
-            if (error) {
-                console.error("Error al cargar historial:", error);
-            } else {
-                setWorkouts(data || []);
+                const querySnapshot = await getDocs(q);
+
+                const fetchedWorkouts: DbWorkout[] = [];
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    fetchedWorkouts.push({
+                        id: doc.id,
+                        name: data.name,
+                        date: data.date,
+                        created_at: data.created_at || new Date().toISOString(),
+                        user_id: data.user_id,
+                        coach_feedback: data.coach_feedback,
+                        is_feedback_read: data.is_feedback_read
+                    });
+                });
+
+                setWorkouts(fetchedWorkouts);
+
                 // Check for unread feedback
-                const unread = data?.find((w: DbWorkout) => w.coach_feedback && w.is_feedback_read === false);
+                const unread = fetchedWorkouts.find((w) => w.coach_feedback && w.is_feedback_read === false);
                 if (unread) setUnreadFeedback(unread);
+
+            } catch (error) {
+                console.error("Error al cargar historial:", error);
+                // Fallback for missing index error
+                if (String(error).includes('requires an index')) {
+                    console.warn("Falta índice en Firestore. Revisa la consola del navegador para el enlace de creación.");
+                }
+            } finally {
+                setLoading(false);
             }
-            setLoading(false);
         }
 
         fetchHistory();
@@ -70,15 +96,14 @@ export default function DashboardPage() {
 
     const handleDeleteWorkout = async (e: React.MouseEvent, workoutId: string) => {
         e.preventDefault(); // Prevent navigation if nested
-        if (!confirm("¿Estás seguro de querer eliminar este entrenamiento? No se puede deshacer.")) return;
+        if (!confirm("¿Estás seguro de querer eliminar este entrenamiento? No se puede deshacer de forma inmediata.")) return;
 
-        const { error } = await supabase.from('workouts').delete().eq('id', workoutId);
-
-        if (error) {
-            alert("Error al eliminar entrenamiento: " + error.message);
-        } else {
-            // Optimistic update or reload
+        try {
+            await deleteDoc(doc(db, 'workouts', workoutId));
+            // Optimistic update
             setWorkouts(prev => prev.filter(w => w.id !== workoutId));
+        } catch (error: any) {
+            alert("Error al eliminar entrenamiento: " + error.message);
         }
     };
 
@@ -94,12 +119,12 @@ export default function DashboardPage() {
         const currentId = unreadFeedback.id;
         setUnreadFeedback(null);
 
-        await supabase
-            .from('workouts')
-            .update({ is_feedback_read: true })
-            .eq('id', currentId);
-
-        // Update local list state to reflect read status if needed, though mostly visual
+        try {
+            const workoutRef = doc(db, 'workouts', currentId);
+            await updateDoc(workoutRef, { is_feedback_read: true });
+        } catch (error) {
+            console.error("Error updating feedback read status", error);
+        }
     };
 
     const handleDuplicateClick = (workout: DbWorkout) => {
@@ -112,30 +137,64 @@ export default function DashboardPage() {
         setCopying(true);
 
         try {
-            const { data: { user } } = await supabase.auth.getUser();
             if (!user) throw new Error("No user found");
 
-            const res = await fetch('/api/workouts/copy', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    sourceWorkoutId: duplicateContext.id,
-                    targetDate: copyDate,
-                    userId: user.id
-                })
+            // 1. Fetch Source Workout to get details (like occurrences)
+            const sourceDoc = await getDoc(doc(db, 'workouts', duplicateContext.id));
+            if (!sourceDoc.exists()) throw new Error("Original workout not found");
+            const sourceData = sourceDoc.data();
+
+            // 2. Create New Workout
+            const newWorkoutRef = await addDoc(collection(db, 'workouts'), {
+                name: sourceData.name || "Workout Copy",
+                date: copyDate,
+                user_id: user.uid,
+                created_at: new Date().toISOString(),
+                occurrences: sourceData.occurrences || 1,
+                coach_feedback: null,
+                is_feedback_read: true
             });
 
-            const data = await res.json();
+            // 3. Fetch Source Logs
+            const q = query(collection(db, 'workout_logs'), where('workout_id', '==', duplicateContext.id));
+            const logsSnapshot = await getDocs(q);
 
-            if (!res.ok) {
-                alert("Error al copiar: " + (data.error || "Unknown error"));
-            } else {
-                // Success! Redirect to new workout
-                router.push(`/workout/${data.newWorkoutId}`);
-            }
+            // 4. Batch Insert New Logs
+            const batch = writeBatch(db);
+            const logsRef = collection(db, 'workout_logs');
+
+            logsSnapshot.forEach((logDoc) => {
+                const log = logDoc.data();
+                const newLogRef = doc(logsRef);
+                batch.set(newLogRef, {
+                    workout_id: newWorkoutRef.id, // Link to NEW workout
+                    exercise_id: log.exercise_id,
+                    set_number: log.set_number,
+                    day_number: log.day_number || 1,
+                    exercise_order: log.exercise_order,
+                    target_reps: log.target_reps,
+                    tempo: log.tempo,
+                    rest_time: log.rest_time,
+
+                    // Reset Execution Data
+                    weight: null,
+                    reps: null,
+                    completed: false,
+                    rpe: null,
+                    notes: null,
+
+                    created_at: new Date().toISOString()
+                });
+            });
+
+            await batch.commit();
+
+            // Success! Redirect to new workout
+            router.push(`/workout/${newWorkoutRef.id}`);
+
         } catch (e: any) {
             console.error("Copy error:", e);
-            alert("Error al intentar copiar.");
+            alert("Error al intentar copiar: " + e.message);
         } finally {
             setCopying(false);
             setDuplicateContext(null);

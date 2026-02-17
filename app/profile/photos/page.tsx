@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { db } from "@/lib/firebase";
+import { collection, query, where, orderBy, getDocs, addDoc, deleteDoc, doc } from "firebase/firestore";
 import { useAuth } from "@/context/AuthContext";
 import { Plus, Calendar, Trash2, ArrowLeft, Camera, Loader2 } from "lucide-react";
 import Link from "next/link";
@@ -39,45 +40,59 @@ export default function ProgressPhotosPage() {
 
     const fetchPhotos = async () => {
         setLoading(true);
-        const { data, error } = await supabase
-            .from('client_photos')
-            .select('*')
-            .eq('user_id', user!.id)
-            .order('date', { ascending: false });
-
-        if (error) console.error(error);
-        else setEntries(data || []);
-        setLoading(false);
+        try {
+            const q = query(
+                collection(db, 'client_photos'),
+                where('user_id', '==', user!.uid),
+                orderBy('date', 'desc')
+            );
+            const querySnapshot = await getDocs(q);
+            const photos: PhotoEntry[] = [];
+            querySnapshot.forEach((doc) => {
+                photos.push({ id: doc.id, ...doc.data() } as PhotoEntry);
+            });
+            setEntries(photos);
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         setSaving(true);
 
-        const { error } = await supabase.from('client_photos').insert({
-            user_id: user!.id,
-            date,
-            front_url: frontUrl,
-            back_url: backUrl,
-            side_url: sideUrl,
-            weight: weight ? parseFloat(weight) : null,
-            notes
-        });
+        try {
+            await addDoc(collection(db, 'client_photos'), {
+                user_id: user!.uid,
+                date,
+                front_url: frontUrl,
+                back_url: backUrl,
+                side_url: sideUrl,
+                weight: weight ? parseFloat(weight) : null,
+                notes,
+                created_at: new Date().toISOString()
+            });
 
-        if (error) {
-            alert("Error: " + error.message);
-        } else {
             setIsModalOpen(false);
             resetForm();
             fetchPhotos();
+        } catch (error: any) {
+            alert("Error: " + error.message);
+        } finally {
+            setSaving(false);
         }
-        setSaving(false);
     };
 
     const handleDelete = async (id: string) => {
         if (!confirm("Delete this entry?")) return;
-        await supabase.from('client_photos').delete().eq('id', id);
-        setEntries(prev => prev.filter(e => e.id !== id));
+        try {
+            await deleteDoc(doc(db, 'client_photos', id));
+            setEntries(prev => prev.filter(e => e.id !== id));
+        } catch (error: any) {
+            alert(error.message);
+        }
     };
 
     const resetForm = () => {

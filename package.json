@@ -14,13 +14,15 @@
     "canvas-confetti": "^1.9.4",
     "clsx": "^2.1.1",
     "dotenv": "^17.2.3",
+    "firebase": "^11.1.0",
     "lucide-react": "^0.562.0",
     "next": "16.1.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "recharts": "^3.6.0",
     "resend": "^6.8.0",
-    "tailwind-merge": "^3.4.0"
+    "tailwind-merge": "^3.4.0",
+    "vercel": "^50.18.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

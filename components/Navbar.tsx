@@ -81,7 +81,7 @@ export function Navbar() {
                         </div>
 
                         <Link href="/profile" className="text-xs text-right hidden sm:block hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded transition-colors group">
-                            <div className="font-bold text-primary group-hover:text-blue-600">{user.user_metadata?.full_name || user.email}</div>
+                            <div className="font-bold text-primary group-hover:text-blue-600">{user.displayName || user.email}</div>
                             <div className="text-muted lowercase">{role}</div>
                         </Link>
                         <button

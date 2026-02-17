@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { ExerciseForm } from "@/components/ExerciseForm";
 import Link from "next/link";
 import { ArrowLeft, Loader2 } from "lucide-react";
-import { supabase } from "@/lib/supabaseClient";
+import { db } from "@/lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
 import { useParams } from "next/navigation";
 
 export default function EditExercisePage() {
@@ -17,9 +18,17 @@ export default function EditExercisePage() {
         if (!id) return;
         const fetchEx = async () => {
             setLoading(true);
-            const { data, error } = await supabase.from('exercises').select('*').eq('id', id).single();
-            if (data) setExercise(data);
-            setLoading(false);
+            try {
+                const docRef = doc(db, 'exercises', id);
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    setExercise({ id: docSnap.id, ...docSnap.data() });
+                }
+            } catch (error) {
+                console.error("Error fetching exercise:", error);
+            } finally {
+                setLoading(false);
+            }
         };
         fetchEx();
     }, [id]);

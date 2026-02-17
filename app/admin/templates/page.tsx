@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { db } from "@/lib/firebase";
+import { collection, query, orderBy, getDocs, doc, writeBatch, where } from "firebase/firestore";
 import Link from "next/link";
 import { ArrowLeft, Plus, Trash2, FileText, Layers } from "lucide-react";
 
@@ -15,22 +16,43 @@ export default function TemplatesPage() {
 
     const fetchTemplates = async () => {
         setLoading(true);
-        const { data, error } = await supabase
-            .from('workout_templates')
-            .select('*')
-            .order('name');
-
-        if (error) console.error(error);
-        else setTemplates(data || []);
-
-        setLoading(false);
+        try {
+            const q = query(collection(db, 'workout_templates'), orderBy('name'));
+            const querySnapshot = await getDocs(q);
+            const tmplList: any[] = [];
+            querySnapshot.forEach((doc) => {
+                tmplList.push({ id: doc.id, ...doc.data() });
+            });
+            setTemplates(tmplList);
+        } catch (error) {
+            console.error("Error loading templates:", error);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleDelete = async (id: string) => {
         if (!confirm("Delete this template?")) return;
-        const { error } = await supabase.from('workout_templates').delete().eq('id', id);
-        if (!error) {
+
+        try {
+            const batch = writeBatch(db);
+
+            // Delete template exercises first
+            const qEx = query(collection(db, 'workout_template_exercises'), where('template_id', '==', id));
+            const exSnap = await getDocs(qEx);
+            exSnap.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+
+            // Delete template
+            const tmplRef = doc(db, 'workout_templates', id);
+            batch.delete(tmplRef);
+
+            await batch.commit();
+
             setTemplates(prev => prev.filter(t => t.id !== id));
+        } catch (error: any) {
+            alert("Error deleting template: " + error.message);
         }
     };
 

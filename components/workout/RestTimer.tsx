@@ -47,28 +47,46 @@ export function RestTimer({ isOpen, onClose, initialSeconds, exerciseName }: Res
         osc.stop(ctx.currentTime + 0.5);
     };
 
+    const endTimeRef = useRef<number | null>(null);
+
     useEffect(() => {
         if (isOpen) {
+            // Set target end time derived from initialSeconds
+            endTimeRef.current = Date.now() + initialSeconds * 1000;
             setTimeLeft(initialSeconds);
+        } else {
+            endTimeRef.current = null;
         }
     }, [isOpen, initialSeconds]);
 
     useEffect(() => {
-        if (!isOpen) return;
-
-        if (timeLeft <= 0) {
-            playBeep();
-            // Optional: Close after a delay or let user close
-            // onClose(); -> Maybe better to let user close to see they are done
-            return;
-        }
+        if (!isOpen || !endTimeRef.current) return;
 
         const interval = setInterval(() => {
-            setTimeLeft(prev => prev - 1);
-        }, 1000);
+            const now = Date.now();
+            const end = endTimeRef.current!;
+            const remaining = Math.ceil((end - now) / 1000);
+
+            if (remaining <= 0) {
+                setTimeLeft(0);
+                playBeep();
+                clearInterval(interval);
+            } else {
+                setTimeLeft(remaining);
+            }
+        }, 100); // Check more frequently for smoothness, but UI updates only on integer change really
 
         return () => clearInterval(interval);
-    }, [isOpen, timeLeft]);
+    }, [isOpen]);
+
+    const addTime = (seconds: number) => {
+        if (endTimeRef.current) {
+            endTimeRef.current += seconds * 1000;
+            // Force immediate update
+            const remaining = Math.ceil((endTimeRef.current - Date.now()) / 1000);
+            setTimeLeft(Math.max(0, remaining));
+        }
+    };
 
     const formatTime = (seconds: number) => {
         const m = Math.floor(seconds / 60);
@@ -98,13 +116,13 @@ export function RestTimer({ isOpen, onClose, initialSeconds, exerciseName }: Res
 
                     <div className="flex justify-center items-center space-x-6 mb-8">
                         <button
-                            onClick={() => setTimeLeft(t => Math.max(0, t - 10))}
+                            onClick={() => addTime(-10)}
                             className="p-3 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors"
                         >
                             <Minus className="w-6 h-6" />
                         </button>
                         <button
-                            onClick={() => setTimeLeft(t => t + 30)}
+                            onClick={() => addTime(30)}
                             className="p-3 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors"
                         >
                             <Plus className="w-6 h-6 text-primary" />

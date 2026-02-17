@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, Suspense } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { db } from "@/lib/firebase";
+import { collection, query, where, getDocs, orderBy, documentId } from "firebase/firestore";
 import { useAuth } from "@/context/AuthContext";
 import { Loader2, TrendingUp, BarChart2 } from "lucide-react";
 import {
@@ -27,7 +28,7 @@ import { useSearchParams } from "next/navigation";
 function ReportsContent() {
     const searchParams = useSearchParams();
     const targetUserId = searchParams.get("userId");
-    const { user, loading: authLoading } = useAuth();
+    const { user, role, loading: authLoading } = useAuth();
     const [loading, setLoading] = useState(true);
 
     // Chart Data
@@ -45,85 +46,109 @@ function ReportsContent() {
     const fetchData = async () => {
         setLoading(true);
 
-        // Determine ID to fetch
-        const idToFetch = (user?.role === 'admin' || user?.role === 'super_admin') && targetUserId
+        const idToFetch = (role === 'admin' || role === 'super_admin') && targetUserId
             ? targetUserId
-            : user!.id;
+            : user!.uid;
 
-        // Fetch all logs for this user
-        // We need: date (from workouts), body_part (from exercises), weight, reps
-        const { data, error } = await supabase
-            .from('workout_logs')
-            .select(`
-                weight,
-                reps,
-                workouts!inner (
-                    date,
-                    user_id
-                ),
-                exercises (
-                    name,
-                    body_part
-                )
-            `)
-            .eq('workouts.user_id', idToFetch)
-            .order('created_at', { ascending: true }); // Process chronologically
+        try {
+            // 1. Fetch Exercises (Map)
+            const exMap = new Map<string, any>();
+            const qEx = query(collection(db, 'exercises')); // Fetch all
+            const exSnap = await getDocs(qEx);
+            exSnap.forEach(doc => {
+                exMap.set(doc.id, doc.data());
+            });
 
-        if (error) {
-            console.error("Error fetching logs:", error);
-            setLoading(false);
-            return;
-        }
+            // 2. Fetch User Workouts
+            const qWo = query(collection(db, 'workouts'), where('user_id', '==', idToFetch));
+            const woSnap = await getDocs(qWo);
 
-        if (!data) return;
+            const workoutsMap = new Map<string, any>();
+            const workoutIds: string[] = [];
 
-        // Process Volume Data (Weekly Volume per Body Part)
-        type VolumeEntry = { name: string;[key: string]: string | number; };
-        const volumeMap = new Map<string, VolumeEntry>();
-        const allExampleExercises = new Set<string>();
-        const allBodyParts = new Set<string>();
+            woSnap.forEach(doc => {
+                workoutsMap.set(doc.id, doc.data());
+                workoutIds.push(doc.id);
+            });
 
-        data.forEach((log: any) => {
-            const dateStr = log.workouts?.date;
-            if (!dateStr) return;
-
-            // Group by Week (Simple: Start of week)
-            const dateObj = new Date(dateStr);
-            const monday = new Date(dateObj);
-            monday.setDate(dateObj.getDate() - dateObj.getDay() + 1); // Adjust to Monday
-            const weekKey = monday.toISOString().split('T')[0];
-
-            const part = log.exercises?.body_part || 'Other';
-            const name = log.exercises?.name;
-            const vol = (log.weight || 0) * (log.reps || 0);
-
-            if (name) allExampleExercises.add(name);
-            allBodyParts.add(part);
-
-            if (!volumeMap.has(weekKey)) {
-                volumeMap.set(weekKey, { name: weekKey });
+            if (workoutIds.length === 0) {
+                setLoading(false);
+                return;
             }
 
-            const entry = volumeMap.get(weekKey)!;
-            const currentVal = (typeof entry[part] === 'number') ? entry[part] as number : 0;
-            entry[part] = currentVal + vol;
-        });
+            // 3. Fetch Logs (Batched by workout_id)
+            let allLogs: any[] = [];
+            const chunkSize = 10; // Firestore 'in' limit is actually 30, but 10 is safe
+            for (let i = 0; i < workoutIds.length; i += chunkSize) {
+                const chunk = workoutIds.slice(i, i + chunkSize);
+                const qLogs = query(collection(db, 'workout_logs'), where('workout_id', 'in', chunk));
+                const logsSnap = await getDocs(qLogs);
+                logsSnap.forEach(doc => {
+                    allLogs.push(doc.data());
+                });
+            }
 
-        const vData: ChartData[] = Array.from(volumeMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-        setVolumeData(vData);
-        setBodyParts(Array.from(allBodyParts));
-        setAvailableExercises(Array.from(allExampleExercises));
+            // 4. Enrich Data
+            const enrichedData = allLogs.map(log => {
+                const workout = workoutsMap.get(log.workout_id);
+                const exercise = exMap.get(log.exercise_id);
+                return {
+                    ...log,
+                    workouts: {
+                        date: workout?.date,
+                        user_id: workout?.user_id
+                    },
+                    exercises: {
+                        name: exercise?.name || 'Unknown',
+                        body_part: exercise?.body_part || 'Other'
+                    }
+                };
+            }).sort((a, b) => new Date(a.workouts.date).getTime() - new Date(b.workouts.date).getTime());
 
-        // Initial Strength Data Processing (will rely on selectedExercise effect mostly, but we preload valid list)
-        // We'll process strength data specifically for the selected exercise in a separate effect or function 
-        // but since we have all data here, let's just store the raw data for re-filtering.
-        // For simplicity now, let's just re-run the "process strength" logic when selection changes, 
-        // but we need the raw data available. I'll store raw data in a ref or state if needed, 
-        // but re-fetching is safer for now or just filter `data` again? 
-        // Actually, let's map `data` to a state `rawLogs` so we don't query DB again.
 
-        setRawLogs(data); // Need to define this state
-        setLoading(false);
+            // Process Volume Data (Weekly Volume per Body Part)
+            type VolumeEntry = { name: string;[key: string]: string | number; };
+            const volumeMap = new Map<string, VolumeEntry>();
+            const allExampleExercises = new Set<string>();
+            const allBodyParts = new Set<string>();
+
+            enrichedData.forEach((log: any) => {
+                const dateStr = log.workouts?.date;
+                if (!dateStr) return;
+
+                // Group by Week (Simple: Start of week)
+                const dateObj = new Date(dateStr);
+                const monday = new Date(dateObj);
+                monday.setDate(dateObj.getDate() - dateObj.getDay() + 1); // Adjust to Monday
+                const weekKey = monday.toISOString().split('T')[0];
+
+                const part = log.exercises?.body_part || 'Other';
+                const name = log.exercises?.name;
+                const vol = (log.weight || 0) * (log.reps || 0);
+
+                if (name) allExampleExercises.add(name);
+                allBodyParts.add(part);
+
+                if (!volumeMap.has(weekKey)) {
+                    volumeMap.set(weekKey, { name: weekKey });
+                }
+
+                const entry = volumeMap.get(weekKey)!;
+                const currentVal = (typeof entry[part] === 'number') ? entry[part] as number : 0;
+                entry[part] = currentVal + vol;
+            });
+
+            const vData: ChartData[] = Array.from(volumeMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+            setVolumeData(vData);
+            setBodyParts(Array.from(allBodyParts));
+            setAvailableExercises(Array.from(allExampleExercises));
+            setRawLogs(enrichedData);
+
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const [rawLogs, setRawLogs] = useState<any[]>([]);

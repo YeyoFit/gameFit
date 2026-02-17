@@ -1,147 +1,117 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
-import { Session, User } from "@supabase/supabase-js";
+import { auth, db } from "@/lib/firebase";
+import { onAuthStateChanged, User as FirebaseUser, signOut as firebaseSignOut } from "firebase/auth";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 
+// Define our role type
+export type UserRole = 'admin' | 'user' | 'super_admin';
+
 type AuthContextType = {
-    user: User | null;
-    session: Session | null;
-    role: 'admin' | 'user' | 'super_admin' | null;
+    user: FirebaseUser | null;
+    role: UserRole | null;
     loading: boolean;
-    signIn: (email: string) => Promise<{ error: any }>;
     signOut: () => Promise<void>;
-    logout: () => Promise<void>; // Alias for compatibility
+    logout: () => Promise<void>; // Alias
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-    const [user, setUser] = useState<User | null>(null);
-    const [session, setSession] = useState<Session | null>(null);
-    const [role, setRole] = useState<'admin' | 'user' | 'super_admin' | null>(null);
+    const [user, setUser] = useState<FirebaseUser | null>(null);
+    const [role, setRole] = useState<UserRole | null>(null);
     const [loading, setLoading] = useState(true);
     const router = useRouter();
 
     useEffect(() => {
-        let isMounted = true;
+        if (!auth) {
+            setLoading(false);
+            return;
+        }
 
-        const initSession = async () => {
-            console.log("AuthContext: initSession starting...");
-            try {
-                // 1. Get initial session with fail-safe timeout
-                const sessionPromise = supabase.auth.getSession();
-                const timeoutPromise = new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error("Session init timeout")), 5000)
-                );
+        // Firebase Auth Listener
+        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+            console.log("Auth State Changed:", currentUser?.email);
 
-                const { data: { session }, error } = await Promise.race([
-                    sessionPromise,
-                    timeoutPromise
-                ]) as any;
-
-                if (error) throw error;
-
-                if (isMounted) {
-                    setSession(session);
-                    setUser(session?.user ?? null);
-
-                    if (session?.user) {
-                        console.log("AuthContext: User found, fetching role...");
-                        // Safely fetch role without aborting
-                        await fetchRole(session.user.id, session.user.email);
-                    } else {
-                        console.log("AuthContext: No user, loading done.");
-                        setLoading(false);
-                    }
-                }
-            } catch (error) {
-                console.error("Auth init session error:", error);
-                if (isMounted) setLoading(false);
-            }
-        };
-
-        initSession();
-
-        // 2. Listen for auth changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-            if (isMounted) {
-                setSession(session);
-                setUser(session?.user ?? null);
-
-                if (session?.user) {
-                    await fetchRole(session.user.id, session.user.email);
-                } else {
-                    setRole(null);
-                    setLoading(false);
-                }
+            if (currentUser) {
+                setUser(currentUser);
+                // Fetch Role from Firestore
+                await fetchUserRole(currentUser);
+            } else {
+                setUser(null);
+                setRole(null);
+                setLoading(false);
             }
         });
 
-        return () => {
-            isMounted = false;
-            subscription.unsubscribe();
-        };
+        return () => unsubscribe();
     }, []);
 
-    const fetchRole = async (userId: string, email?: string) => {
+    const fetchUserRole = async (currentUser: FirebaseUser) => {
+        if (!db) {
+            setRole('user');
+            setLoading(false);
+            return;
+        }
         try {
-            console.log(`AuthContext: fetchRole for ${userId} (${email})`);
-
-            // IMMEDIATELY check for hardcoded super admin
-            if (email && email.toLowerCase() === 'mazomalote@gmail.com') {
-                console.log("⚠️ Force-enabling Super Admin for master account (PRE-CHECK)");
+            // Master Admin Hardcode (Safety net)
+            if (currentUser.email?.toLowerCase() === 'mazomalote@gmail.com') {
+                console.log("⚠️ Force-enabling Super Admin for master account");
                 setRole('super_admin');
+
+                // Ensure this user exists in Firestore with correct role
+                const userRef = doc(db, "users", currentUser.uid);
+                await setDoc(userRef, {
+                    email: currentUser.email,
+                    role: 'super_admin',
+                    lastSeen: new Date().toISOString()
+                }, { merge: true });
+
                 setLoading(false);
                 return;
             }
 
-            // Use RPC to get role safely, bypassing potential RLS recursion
-            // Added 3s timeout to prevent infinite loading
-            const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error("Role fetch timeout")), 3000)
-            );
+            const userRef = doc(db, "users", currentUser.uid);
+            const userSnap = await getDoc(userRef);
 
-            // Cast to any to handle the race type mix
-            const { data, error } = await Promise.race([
-                supabase.rpc('get_my_role'),
-                timeoutPromise
-            ]) as any;
-
-            if (error) throw error;
-
-            console.log("AuthContext: fetchRole success:", data);
-
-            if (data) {
-                setRole(data as 'admin' | 'user' | 'super_admin');
+            if (userSnap.exists()) {
+                const userData = userSnap.data();
+                console.log("User Data from Firestore:", userData);
+                setRole(userData.role as UserRole);
             } else {
-                setRole('user'); // Default to user if no role found
+                console.log("User document not found in Firestore. Creating default...");
+                // Create user profile if it doesn't exist (default role: user)
+                await setDoc(userRef, {
+                    email: currentUser.email,
+                    role: 'user',
+                    createdAt: new Date().toISOString()
+                });
+                setRole('user');
             }
-        } catch (err) {
-            console.error("Error OR Timeout fetching role", err);
-            setRole('user'); // Default to user on error
+        } catch (error) {
+            console.error("Error fetching user role:", error);
+            setRole('user'); // Default fallback
         } finally {
-            console.log("AuthContext: Loading set to FALSE");
             setLoading(false);
         }
     };
 
-    const signIn = async (email: string) => {
-        // Generic helper if used elsewhere, but Login Page uses direct calls
-        const { error } = await supabase.auth.signInWithOtp({ email });
-        return { error };
-    };
-
     const signOut = async () => {
-        await supabase.auth.signOut();
-        router.push("/login");
+        if (!auth) return;
+        try {
+            await firebaseSignOut(auth);
+            router.push("/login");
+        } catch (error) {
+            console.error("Error signing out:", error);
+        }
     };
 
-    const logout = signOut; // Alias
+    const logout = signOut;
 
     return (
-        <AuthContext.Provider value={{ user, session, role, loading, signIn, signOut, logout }}>
+        <AuthContext.Provider value={{ user, role, loading, signOut, logout }}>
             {children}
         </AuthContext.Provider>
     );

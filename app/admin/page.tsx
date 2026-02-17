@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Users, Search, Activity, FileText, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { supabase } from "@/lib/supabaseClient";
+import { db } from "@/lib/firebase";
+import { collection, query, where, getDocs, orderBy, limit, doc, deleteDoc, writeBatch } from "firebase/firestore";
 
 export default function AdminDashboard() {
-    const { user } = useAuth();
+    const { user, role, loading: authLoading } = useAuth();
     const router = useRouter();
     const [clients, setClients] = useState<any[]>([]);
     const [recentActivity, setRecentActivity] = useState<any[]>([]);
@@ -16,9 +17,13 @@ export default function AdminDashboard() {
 
     // Route protection & Data Fetching
     useEffect(() => {
-        if (!user) return;
+        if (authLoading) return;
+        if (!user) {
+            router.push("/login");
+            return;
+        }
 
-        if (user.role !== 'admin' && user.role !== 'super_admin') {
+        if (role !== 'admin' && role !== 'super_admin') {
             router.push("/");
             return;
         }
@@ -26,31 +31,66 @@ export default function AdminDashboard() {
         const fetchData = async () => {
             setLoading(true);
 
-            // 1. Fetch Clients
-            const { data: clientsData, error: clientsError } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('role', 'user');
+            try {
+                // 1. Fetch Clients
+                // Note: requires index on 'role' if mixed with other filters, but simple where is fine.
+                const qClients = query(collection(db, 'users'), where('role', '==', 'user'));
+                const clientsSnap = await getDocs(qClients);
+                const clientsData: any[] = [];
+                clientsSnap.forEach(doc => clientsData.push({ id: doc.id, ...doc.data() }));
+                setClients(clientsData);
 
-            if (clientsError) console.error("Error al cargar clientes:", clientsError);
-            else setClients(clientsData || []);
+                // 2. Fetch Recent Activity
+                const qActivity = query(collection(db, 'workouts'), orderBy('created_at', 'desc'), limit(5));
+                const activitySnap = await getDocs(qActivity);
+                const activityData: any[] = [];
+                activitySnap.forEach(doc => activityData.push({ id: doc.id, ...doc.data() }));
+                setRecentActivity(activityData);
 
-            // 2. Fetch Recent Activity
-            const { data: activityData } = await supabase
-                .from('workouts')
-                .select('*')
-                .order('created_at', { ascending: false })
-                .limit(5);
-
-            if (activityData) setRecentActivity(activityData);
-
-            setLoading(false);
+            } catch (error) {
+                console.error("Error al cargar datos:", error);
+            } finally {
+                setLoading(false);
+            }
         };
 
         fetchData();
-    }, [user, router]);
+    }, [user, role, authLoading, router]);
 
-    if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) return null;
+    const handleDeleteWorkout = async (e: React.MouseEvent, workoutId: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!confirm("¿Seguro que quieres borrar este entrenamiento?")) return;
+
+        try {
+            // Batch delete logs and workout
+            const batch = writeBatch(db);
+
+            // 1. Get logs
+            const qLogs = query(collection(db, 'workout_logs'), where('workout_id', '==', workoutId));
+            const logsSnap = await getDocs(qLogs);
+            logsSnap.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+
+            // 2. Delete workout
+            const workoutRef = doc(db, 'workouts', workoutId);
+            batch.delete(workoutRef);
+
+            await batch.commit();
+
+            alert("Entrenamiento borrado");
+            // Optimistic update
+            setRecentActivity(prev => prev.filter(w => w.id !== workoutId));
+
+        } catch (err: any) {
+            console.error("Error deleting:", err);
+            alert("Error al borrar: " + err.message);
+        }
+    };
+
+    if (authLoading || loading) return <div className="p-10">Cargando panel...</div>;
+    if (!user || (role !== 'admin' && role !== 'super_admin')) return null;
 
     return (
         <div className="py-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -60,7 +100,7 @@ export default function AdminDashboard() {
                     <p className="text-muted">Gestiona tus atletas, programación y actividad en vivo.</p>
                 </div>
                 <div className="flex items-center gap-4">
-                    {user.role === 'super_admin' && (
+                    {role === 'super_admin' && (
                         <Link href="/admin/users" className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md font-bold text-sm shadow">
                             Gestionar Usuarios
                         </Link>
@@ -80,43 +120,21 @@ export default function AdminDashboard() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {recentActivity.map(workout => {
                         const client = clients.find(c => c.id === workout.user_id);
+                        // Fallback name if client not found in the 'user' list (e.g. admin's own workout)
+                        const clientName = client ? (client.email || client.full_name || client.id) :
+                            (workout.user_id === user.uid ? 'Tú (Admin)' : 'Usuario Desconocido');
+
                         return (
                             <div key={workout.id} className="bg-white dark:bg-surface p-4 rounded-lg shadow-sm border-l-4 border-green-500 flex flex-col relative group">
                                 <span className="text-xs text-gray-400 font-mono mb-1">{new Date(workout.created_at).toLocaleString()}</span>
-                                <span className="font-bold text-gray-900 dark:text-gray-100">{client ? (client.email || client.id) : 'Usuario Desconocido'}</span>
+                                <span className="font-bold text-gray-900 dark:text-gray-100">{clientName}</span>
                                 <span className="text-sm text-gray-600 dark:text-gray-300">completó <strong>{workout.name}</strong></span>
                                 <div className="mt-2 flex items-center justify-between">
                                     <Link href={`/workout/${workout.id}`} className="text-xs text-primary font-bold hover:underline">
                                         Ver Detalles &rarr;
                                     </Link>
                                     <button
-                                        onClick={async (e) => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            if (!confirm("¿Seguro que quieres borrar este entrenamiento?")) return;
-
-                                            try {
-                                                const { data: { user } } = await supabase.auth.getUser();
-                                                const res = await fetch('/api/workouts/delete', {
-                                                    method: 'POST',
-                                                    headers: { 'Content-Type': 'application/json' },
-                                                    body: JSON.stringify({
-                                                        workoutId: workout.id,
-                                                        requesterId: user?.id
-                                                    })
-                                                });
-
-                                                if (res.ok) {
-                                                    alert("Entrenamiento borrado");
-                                                    window.location.reload(); // Simple reload to refresh list
-                                                } else {
-                                                    const d = await res.json();
-                                                    alert("Error: " + d.error);
-                                                }
-                                            } catch (err) {
-                                                alert("Error de conexión");
-                                            }
-                                        }}
+                                        onClick={(e) => handleDeleteWorkout(e, workout.id)}
                                         className="text-red-400 hover:text-red-600 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                                         title="Borrar entrenamiento"
                                     >

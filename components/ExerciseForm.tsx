@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { db } from "@/lib/firebase";
+import { collection, addDoc, doc, updateDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { Save, Loader2, ArrowLeft } from "lucide-react";
 import Link from "next/link";
@@ -36,31 +37,31 @@ export function ExerciseForm({ initialData }: ExerciseFormProps) {
             name,
             body_part: bodyPart,
             video_url: videoUrl,
-            notes
+            notes,
+            // Add updated_at if editing, created_at if new? 
+            // Firestore doesn't auto-add these like Supabase might if configured, so let's add them.
+            updated_at: new Date().toISOString()
         };
 
-        let result;
-        if (initialData?.id) {
-            // Update
-            result = await supabase
-                .from('exercises')
-                .update(payload)
-                .eq('id', initialData.id);
-        } else {
-            // Create
-            result = await supabase
-                .from('exercises')
-                .insert(payload);
-        }
+        try {
+            if (initialData?.id) {
+                // Update
+                const docRef = doc(db, 'exercises', initialData.id);
+                await updateDoc(docRef, payload);
+            } else {
+                // Create
+                await addDoc(collection(db, 'exercises'), {
+                    ...payload,
+                    created_at: new Date().toISOString()
+                });
+            }
 
-        const { error } = result;
-
-        if (error) {
-            alert("Error: " + error.message);
-            setLoading(false);
-        } else {
             router.push("/admin/exercises");
             router.refresh();
+        } catch (error: any) {
+            alert("Error: " + error.message);
+        } finally {
+            setLoading(false);
         }
     };
 

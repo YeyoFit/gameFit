@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { db } from "@/lib/firebase";
+import { collection, query, where, orderBy, getDocs, addDoc, doc, deleteDoc, getDoc } from "firebase/firestore";
 import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Plus, Save, Trash2, Calendar } from "lucide-react";
 import Link from "next/link";
@@ -44,52 +45,66 @@ export default function UserMeasurementsPage() {
     const fetchData = async () => {
         setLoading(true);
 
-        // 1. Fetch User Info (for header)
-        const { data: userData } = await supabase.from('profiles').select('email').eq('id', userId).single();
-        if (userData) setUserProfile(userData);
+        try {
+            // 1. Fetch User Info (for header)
+            const userDoc = await getDoc(doc(db, 'users', userId));
+            if (userDoc.exists()) {
+                setUserProfile(userDoc.data() as UserProfile);
+            }
 
-        // 2. Fetch Measurements
-        const { data: measureData, error } = await supabase
-            .from('client_measurements')
-            .select('*')
-            .eq('user_id', userId)
-            .order('recorded_at', { ascending: false });
-
-        if (error) console.error(error);
-        else setMeasurements(measureData || []);
-
-        setLoading(false);
+            // 2. Fetch Measurements
+            const q = query(
+                collection(db, 'client_measurements'),
+                where('user_id', '==', userId),
+                orderBy('recorded_at', 'desc')
+            );
+            const querySnapshot = await getDocs(q);
+            const measureData: Measurement[] = [];
+            querySnapshot.forEach((doc) => {
+                measureData.push({ id: doc.id, ...doc.data() } as Measurement);
+            });
+            setMeasurements(measureData);
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleAddMeasurement = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSubmitting(true);
 
-        const { error } = await supabase.from('client_measurements').insert({
-            user_id: userId,
-            recorded_at: date,
-            weight: parseFloat(weight),
-            body_fat_percentage: bodyFat ? parseFloat(bodyFat) : null,
-            notes: notes
-        });
+        try {
+            await addDoc(collection(db, 'client_measurements'), {
+                user_id: userId,
+                recorded_at: date,
+                weight: parseFloat(weight),
+                body_fat_percentage: bodyFat ? parseFloat(bodyFat) : null,
+                notes: notes,
+                created_at: new Date().toISOString()
+            });
 
-        if (error) {
-            alert("Error adding measurement: " + error.message);
-        } else {
             // Reset form
             setWeight("");
             setBodyFat("");
             setNotes("");
             fetchData();
+        } catch (error: any) {
+            alert("Error adding measurement: " + error.message);
+        } finally {
+            setIsSubmitting(false);
         }
-        setIsSubmitting(false);
     };
 
     const handleDelete = async (id: string) => {
         if (!confirm("Are you sure?")) return;
-        const { error } = await supabase.from('client_measurements').delete().eq('id', id);
-        if (error) alert(error.message);
-        else fetchData();
+        try {
+            await deleteDoc(doc(db, 'client_measurements', id));
+            fetchData();
+        } catch (error: any) {
+            alert(error.message);
+        }
     };
 
     if (loading) return <div className="p-10 text-center">Loading...</div>;

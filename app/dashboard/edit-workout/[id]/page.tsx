@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { db } from "@/lib/firebase";
+import { collection, query, orderBy, getDocs, doc, getDoc, updateDoc, writeBatch, where, addDoc, deleteDoc } from "firebase/firestore";
 import { ArrowLeft, Plus, Save, Trash2, Dumbbell, GripVertical, Download, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
@@ -50,70 +51,75 @@ export default function EditWorkoutPage() {
             if (!workoutId) return;
             setLoading(true);
 
-            // 1. Fetch Exercises (Reference)
-            const { data: exData } = await supabase.from('exercises').select('*').order('name');
-            setAvailableExercises(exData || []);
+            try {
+                // 1. Fetch Exercises (Reference)
+                const qEx = query(collection(db, 'exercises'), orderBy('name'));
+                const exSnap = await getDocs(qEx);
+                const exList: Exercise[] = [];
+                exSnap.forEach(doc => exList.push({ id: doc.id, ...doc.data() } as Exercise));
+                setAvailableExercises(exList);
 
-            // 2. Fetch Templates
-            const { data: templData } = await supabase.from('workout_templates').select('*').order('name');
-            setAvailableTemplates(templData || []);
+                // 2. Fetch Templates
+                const qTmpl = query(collection(db, 'workout_templates'), orderBy('name'));
+                const tmplSnap = await getDocs(qTmpl);
+                const tmpls: any[] = [];
+                tmplSnap.forEach(doc => tmpls.push({ id: doc.id, ...doc.data() }));
+                setAvailableTemplates(tmpls);
 
-            // 3. Fetch Workout Details
-            const { data: wo, error: woError } = await supabase
-                .from('workouts')
-                .select('*')
-                .eq('id', workoutId)
-                .single();
+                // 3. Fetch Workout Details
+                const woRef = doc(db, 'workouts', workoutId);
+                const woSnap = await getDoc(woRef);
 
-            if (woError || !wo) {
-                alert("Error cargando entrenamiento");
-                router.push('/dashboard');
-                return;
+                if (!woSnap.exists()) {
+                    alert("Error cargando entrenamiento");
+                    router.push('/dashboard');
+                    return;
+                }
+                const wo = woSnap.data();
+
+                setWorkoutName(wo.name);
+                setWorkoutDate(wo.date);
+                setOccurrences(wo.occurrences || 1);
+
+                // 4. Fetch Logs to Reconstruct State
+                // Fetch ALL logs for this workout to ensure we have complete picture
+                const qLogs = query(collection(db, 'workout_logs'), where('workout_id', '==', workoutId), orderBy('exercise_order'));
+                const logsSnap = await getDocs(qLogs);
+                const logs: any[] = [];
+                logsSnap.forEach(doc => logs.push({ id: doc.id, ...doc.data() }));
+
+                if (logs.length > 0) {
+                    // Filter for Day 1 to build the "Plan"
+                    const day1Logs = logs.filter(l => l.day_number === 1);
+
+                    const grouped = new Map<string, WorkoutExerciseConfig>();
+                    const seenIds = new Set<string>();
+
+                    day1Logs.forEach((log: any) => {
+                        if (!grouped.has(log.exercise_id)) {
+                            grouped.set(log.exercise_id, {
+                                exerciseId: log.exercise_id,
+                                tempId: Math.random().toString(36).substr(2, 9),
+                                order: log.exercise_order || "A",
+                                sets: 0,
+                                targetReps: log.target_reps || "8-12",
+                                tempo: log.tempo || "3010",
+                                rest: log.rest_time || "60s",
+                            });
+                            seenIds.add(log.exercise_id);
+                        }
+                        const conf = grouped.get(log.exercise_id)!;
+                        conf.sets += 1;
+                    });
+
+                    setSelectedExercises(Array.from(grouped.values()).sort((a, b) => a.order.localeCompare(b.order, undefined, { numeric: true })));
+                    setInitialExerciseIds(Array.from(seenIds));
+                }
+            } catch (error) {
+                console.error(error);
+            } finally {
+                setLoading(false);
             }
-
-            setWorkoutName(wo.name);
-            setWorkoutDate(wo.date);
-            setOccurrences(wo.occurrences || 1);
-
-            // 4. Fetch Logs to Reconstruct State
-            // We use Day 1 logs as the "Plan" source of truth
-            const { data: logs, error: logsError } = await supabase
-                .from('workout_logs')
-                .select(`
-                    *,
-                    exercises (name)
-                `)
-                .eq('workout_id', workoutId)
-                .eq('day_number', 1) // Only fetch Day 1 to build the "Plan"
-                .order('exercise_order');
-
-            if (logs) {
-                // Group by exercise_id to determine Sets count
-                const grouped = new Map<string, WorkoutExerciseConfig>();
-                const seenIds = new Set<string>();
-
-                logs.forEach((log: any) => {
-                    if (!grouped.has(log.exercise_id)) {
-                        grouped.set(log.exercise_id, {
-                            exerciseId: log.exercise_id,
-                            tempId: Math.random().toString(36).substr(2, 9),
-                            order: log.exercise_order || "A",
-                            sets: 0, // Will count
-                            targetReps: log.target_reps || "8-12",
-                            tempo: log.tempo || "3010",
-                            rest: log.rest_time || "60s",
-                        });
-                        seenIds.add(log.exercise_id);
-                    }
-                    const conf = grouped.get(log.exercise_id)!;
-                    conf.sets += 1;
-                });
-
-                setSelectedExercises(Array.from(grouped.values()).sort((a, b) => a.order.localeCompare(b.order, undefined, { numeric: true })));
-                setInitialExerciseIds(Array.from(seenIds));
-            }
-
-            setLoading(false);
         };
 
         init();
@@ -145,25 +151,30 @@ export default function EditWorkoutPage() {
 
     const handleLoadTemplate = async (templateId: string) => {
         setLoading(true);
-        const { data: items } = await supabase
-            .from('workout_template_exercises')
-            .select('*')
-            .eq('template_id', templateId);
+        try {
+            const q = query(collection(db, 'workout_template_exercises'), where('template_id', '==', templateId));
+            const itemsSnap = await getDocs(q);
+            const items: any[] = [];
+            itemsSnap.forEach(doc => items.push(doc.data()));
 
-        if (items) {
-            const mapped: WorkoutExerciseConfig[] = items.map(item => ({
-                exerciseId: item.exercise_id,
-                tempId: Math.random().toString(36).substr(2, 9),
-                order: item.exercise_order,
-                sets: item.target_sets,
-                targetReps: item.target_reps,
-                tempo: item.tempo || "3010",
-                rest: item.rest_time ? String(item.rest_time) : "60"
-            }));
-            setSelectedExercises([...selectedExercises, ...mapped]);
+            if (items.length > 0) {
+                const mapped: WorkoutExerciseConfig[] = items.map(item => ({
+                    exerciseId: item.exercise_id,
+                    tempId: Math.random().toString(36).substr(2, 9),
+                    order: item.exercise_order,
+                    sets: item.target_sets,
+                    targetReps: item.target_reps,
+                    tempo: item.tempo || "3010",
+                    rest: item.rest_time ? String(item.rest_time) : "60"
+                }));
+                setSelectedExercises([...selectedExercises, ...mapped]);
+            }
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setIsTemplateModalOpen(false);
+            setLoading(false);
         }
-        setIsTemplateModalOpen(false);
-        setLoading(false);
     };
 
     const handleSaveTemplate = async () => {
@@ -178,36 +189,38 @@ export default function EditWorkoutPage() {
         setSaving(true);
         try {
             // 1. Create Template
-            const { data: tmpl, error: tError } = await supabase
-                .from('workout_templates')
-                .insert({ name: templateName })
-                .select()
-                .single();
+            const tmplRef = await addDoc(collection(db, 'workout_templates'), {
+                name: templateName,
+                created_at: new Date().toISOString()
+            });
 
-            if (tError) throw tError;
+            // 2. Insert Items (Batch)
+            const batch = writeBatch(db);
+            const itemsRef = collection(db, 'workout_template_exercises');
 
-            // 2. Insert Items
-            const items = selectedExercises.map(ex => ({
-                template_id: tmpl.id,
-                exercise_id: ex.exerciseId,
-                exercise_order: ex.order,
-                target_sets: ex.sets,
-                target_reps: ex.targetReps,
-                tempo: ex.tempo,
-                rest_time: ex.rest
-            }));
+            selectedExercises.forEach(ex => {
+                const newDocRef = doc(itemsRef);
+                batch.set(newDocRef, {
+                    template_id: tmplRef.id,
+                    exercise_id: ex.exerciseId,
+                    exercise_order: ex.order,
+                    target_sets: ex.sets,
+                    target_reps: ex.targetReps,
+                    tempo: ex.tempo,
+                    rest_time: ex.rest
+                });
+            });
 
-            const { error: itemsError } = await supabase
-                .from('workout_template_exercises')
-                .insert(items);
-
-            if (itemsError) throw itemsError;
+            await batch.commit();
 
             alert("Plantilla guardada correctamente!");
 
             // Refresh templates list
-            const { data: newTempls } = await supabase.from('workout_templates').select('*').order('name');
-            setAvailableTemplates(newTempls || []);
+            const qTmpl = query(collection(db, 'workout_templates'), orderBy('name'));
+            const tmplSnap = await getDocs(qTmpl);
+            const tmpls: any[] = [];
+            tmplSnap.forEach(doc => tmpls.push({ id: doc.id, ...doc.data() }));
+            setAvailableTemplates(tmpls);
 
         } catch (err: any) {
             console.error(err);
@@ -230,52 +243,43 @@ export default function EditWorkoutPage() {
 
         setSaving(true);
         try {
-            // 1. Update Workout Details
-            const { error: wError } = await supabase
-                .from('workouts')
-                .update({
-                    name: workoutName,
-                    date: workoutDate,
-                    occurrences: occurrences
-                })
-                .eq('id', workoutId);
+            const batch = writeBatch(db);
 
-            if (wError) throw wError;
+            // 1. Update Workout Details
+            const woRef = doc(db, 'workouts', workoutId);
+            batch.update(woRef, {
+                name: workoutName,
+                date: workoutDate,
+                occurrences: occurrences
+            });
+
+            // Fetch current logs again to be sure we have IDs
+            const logsRef = collection(db, 'workout_logs');
+            const qLogs = query(logsRef, where('workout_id', '==', workoutId));
+            const logsSnap = await getDocs(qLogs);
+            const currentLogs: any[] = [];
+            logsSnap.forEach(doc => currentLogs.push({ id: doc.id, ...doc.data() }));
 
             // 2. Handle Deletions (Exercises removed from UI)
             const currentIds = new Set(selectedExercises.map(e => e.exerciseId));
-            const toDelete = initialExerciseIds.filter(id => !currentIds.has(id));
+            const toDeleteIds = initialExerciseIds.filter(id => !currentIds.has(id));
 
-            if (toDelete.length > 0) {
-                await supabase
-                    .from('workout_logs')
-                    .delete()
-                    .eq('workout_id', workoutId)
-                    .in('exercise_id', toDelete);
-            }
+            currentLogs.forEach(log => {
+                if (toDeleteIds.includes(log.exercise_id)) {
+                    batch.delete(doc(db, 'workout_logs', log.id));
+                }
+            });
 
             // 3. Handle Updates & Additions
-            // It's safer to re-sync sets logic.
-            // Strategy: For each selected exercise:
-            // - Check if it exists in DB (checked by initialExerciseIds but we need to know current DB state for sets)
-            // Actually, we can just UPSERT strategies? No, 'workout_logs' has no cosmetic ID for "Plan Item".
-            // Simpler Strategy:
-            // For each exercise in UI:
-            //   Fetch existing logs count (Day 1).
-            //   Update attributes (order, targets) for ALL logs of this exercise.
-            //   Adjust set count (Del exceeding / Add missing).
-
-            // We need to loop carefully because of concurrency.
-
             for (const ex of selectedExercises) {
                 const isNew = !initialExerciseIds.includes(ex.exerciseId);
 
                 if (isNew) {
                     // INSERT logs for ALL days
-                    const logsToInsert: any[] = [];
                     for (let d = 1; d <= occurrences; d++) {
                         for (let s = 1; s <= ex.sets; s++) {
-                            logsToInsert.push({
+                            const newDocRef = doc(logsRef);
+                            batch.set(newDocRef, {
                                 workout_id: workoutId,
                                 exercise_id: ex.exerciseId,
                                 set_number: s,
@@ -284,45 +288,38 @@ export default function EditWorkoutPage() {
                                 target_reps: ex.targetReps,
                                 tempo: ex.tempo,
                                 rest_time: ex.rest,
-                                completed: false
+                                completed: false,
+                                created_at: new Date().toISOString()
                             });
                         }
                     }
-                    if (logsToInsert.length > 0) {
-                        await supabase.from('workout_logs').insert(logsToInsert);
-                    }
                 } else {
                     // UPDATE Existing
-                    // 1. Update metadata for ALL logs of this exercise in this workout
-                    await supabase
-                        .from('workout_logs')
-                        .update({
+                    // Filter logs for this exercise
+                    const exLogs = currentLogs.filter(l => l.exercise_id === ex.exerciseId);
+
+                    // 1. Update metadata for ALL logs
+                    exLogs.forEach(log => {
+                        batch.update(doc(db, 'workout_logs', log.id), {
                             exercise_order: ex.order,
                             target_reps: ex.targetReps,
                             tempo: ex.tempo,
                             rest_time: ex.rest
-                        })
-                        .eq('workout_id', workoutId)
-                        .eq('exercise_id', ex.exerciseId);
+                        });
+                    });
 
                     // 2. Adjust Sets
                     // Count logs for Day 1
-                    const { count } = await supabase
-                        .from('workout_logs')
-                        .select('*', { count: 'exact', head: true })
-                        .eq('workout_id', workoutId)
-                        .eq('exercise_id', ex.exerciseId)
-                        .eq('day_number', 1);
-
-                    const currentSets = count || 0;
+                    const day1ExLogs = exLogs.filter(l => l.day_number === 1);
+                    const currentSets = day1ExLogs.length;
 
                     if (ex.sets > currentSets) {
                         // Add Sets
                         const setsToAdd = ex.sets - currentSets;
-                        const newLogs: any[] = [];
                         for (let d = 1; d <= occurrences; d++) {
                             for (let i = 1; i <= setsToAdd; i++) {
-                                newLogs.push({
+                                const newDocRef = doc(logsRef);
+                                batch.set(newDocRef, {
                                     workout_id: workoutId,
                                     exercise_id: ex.exerciseId,
                                     set_number: currentSets + i,
@@ -331,53 +328,30 @@ export default function EditWorkoutPage() {
                                     target_reps: ex.targetReps,
                                     tempo: ex.tempo,
                                     rest_time: ex.rest,
-                                    completed: false
+                                    completed: false,
+                                    created_at: new Date().toISOString()
                                 });
                             }
                         }
-                        await supabase.from('workout_logs').insert(newLogs);
-
                     } else if (ex.sets < currentSets) {
-                        // Remove Excess Sets
-                        await supabase
-                            .from('workout_logs')
-                            .delete()
-                            .eq('workout_id', workoutId)
-                            .eq('exercise_id', ex.exerciseId)
-                            .gt('set_number', ex.sets);
+                        // Remove Excess Sets from ALL days
+                        currentLogs
+                            .filter(l => l.exercise_id === ex.exerciseId && l.set_number > ex.sets)
+                            .forEach(log => {
+                                batch.delete(doc(db, 'workout_logs', log.id));
+                            });
                     }
 
-                    // 3. Adjust Days (if occurrences changed)
-                    // If occurrences increased, we need to add full days for existing exercises?
-                    // This is complex. If occurrences changed from 1 to 2, we need day 2 logs for this existing exercise.
-                    // Let's implement that:
-
-                    // Count unique days for this exercise
-                    // Actually simpler: We know 'occurrences' is the target.
-                    // We can just try to insert missing days?
-
-                    // Logic: For d = 1 to occurrences:
-                    // Check if logs exist for this day/exercise. If not, insert 'ex.sets' logs.
-                    // This covers the "New Day" case efficiently.
-
-                    // Optimisation: Do this ONLY if we suspect days changed, but checking per day is safe.
-                    // To avoid N queries, we can just assume if we increased 'occurrences', we need to fill gaps.
-                    // Keep it simple for now: The "Adjust Sets" above handled Day 1...N for *new sets*.
-                    // But if Day 2 didn't exist before, the *existing sets* (1..currentSets) are missing for Day 2.
-
+                    // 3. Adjust Days (if occurrences increased)
+                    // Check if logs exist for day D. If not, insert.
+                    // We can check `exLogs` filtered by day.
                     for (let d = 1; d <= occurrences; d++) {
-                        const { count: dayCount } = await supabase
-                            .from('workout_logs')
-                            .select('*', { count: 'exact', head: true })
-                            .eq('workout_id', workoutId)
-                            .eq('exercise_id', ex.exerciseId)
-                            .eq('day_number', d);
-
-                        if ((dayCount || 0) === 0) {
+                        const dayLogs = exLogs.filter(l => l.day_number === d);
+                        if (dayLogs.length === 0) {
                             // Missing Day! Insert all sets.
-                            const missingDayLogs: any[] = [];
                             for (let s = 1; s <= ex.sets; s++) {
-                                missingDayLogs.push({
+                                const newDocRef = doc(logsRef);
+                                batch.set(newDocRef, {
                                     workout_id: workoutId,
                                     exercise_id: ex.exerciseId,
                                     set_number: s,
@@ -386,22 +360,23 @@ export default function EditWorkoutPage() {
                                     target_reps: ex.targetReps,
                                     tempo: ex.tempo,
                                     rest_time: ex.rest,
-                                    completed: false
+                                    completed: false,
+                                    created_at: new Date().toISOString()
                                 });
                             }
-                            await supabase.from('workout_logs').insert(missingDayLogs);
                         }
                     }
                 }
             }
 
             // 4. Handle Decreased Occurrences (Days removed)
-            // Delete logs where day_number > occurrences
-            await supabase
-                .from('workout_logs')
-                .delete()
-                .eq('workout_id', workoutId)
-                .gt('day_number', occurrences);
+            currentLogs.forEach(log => {
+                if (log.day_number > occurrences) {
+                    batch.delete(doc(db, 'workout_logs', log.id));
+                }
+            });
+
+            await batch.commit();
 
             alert("Plan actualizado correctamente.");
             router.push(`/workout/${workoutId}`);

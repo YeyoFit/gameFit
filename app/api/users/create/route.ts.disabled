@@ -2,20 +2,21 @@ import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { sendWelcomeEmail } from '@/lib/emailService';
 
-// Initialize Supabase Admin Client (Service Role)
-// This strictly requires the SERVICE_ROLE_KEY to bypass RLS and direct Auth management
-const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-        auth: {
-            autoRefreshToken: false,
-            persistSession: false
-        }
-    }
-);
+export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
+    // Initialize Supabase Admin Client (Service Role) inside handler to avoid build-time errors
+    const supabaseAdmin = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        {
+            auth: {
+                autoRefreshToken: false,
+                persistSession: false
+            }
+        }
+    );
+
     try {
         // 1. Verify the requester is a Super Admin
         // We get the session via the request headers or cookies if we were using the SSR helper,

@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { db } from "@/lib/firebase";
+import { collection, getDocs, addDoc, query, where, orderBy, doc, getDoc, writeBatch } from "firebase/firestore";
 import { ArrowLeft, Plus, Save, Trash2, Dumbbell, GripVertical, Download, Check } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
@@ -54,23 +55,42 @@ export default function CreateWorkoutPage() {
     useEffect(() => {
         const fetchExercises = async () => {
             setLoading(true);
-            const { data, error } = await supabase.from('exercises').select('*').order('name');
-            if (error) console.error(error);
-            else setAvailableExercises(data || []);
-            setLoading(false);
+            try {
+                const q = query(collection(db, 'exercises'), orderBy('name'));
+                const querySnapshot = await getDocs(q);
+                const exList: Exercise[] = [];
+                querySnapshot.forEach((doc) => {
+                    exList.push({ id: doc.id, ...doc.data() } as Exercise);
+                });
+                setAvailableExercises(exList);
+            } catch (error) {
+                console.error("Error fetching exercises:", error);
+            } finally {
+                setLoading(false);
+            }
         };
 
         const fetchClients = async () => {
             if (role === 'admin' || role === 'super_admin') {
-                const { data, error } = await supabase.from('profiles').select('id, email').order('email');
-                if (data) {
-                    setClients(data);
-                    // Default to self or empty
-                    if (user) setSelectedClientId(user.id);
+                try {
+                    // Fetch users from 'users' collection
+                    const q = query(collection(db, 'users'), orderBy('email'));
+                    const querySnapshot = await getDocs(q);
+                    const clientList: Profile[] = [];
+                    querySnapshot.forEach((doc) => {
+                        const data = doc.data();
+                        clientList.push({ id: doc.id, email: data.email, role: data.role });
+                    });
+                    setClients(clientList);
+
+                    // Default to self if in list, or just empty
+                    if (user && !selectedClientId) setSelectedClientId(user.uid);
+                } catch (error) {
+                    console.error("Error fetching clients:", error);
                 }
             } else if (user) {
                 // Regular user: can only create for self
-                setSelectedClientId(user.id);
+                setSelectedClientId(user.uid);
             }
         };
 
@@ -81,8 +101,17 @@ export default function CreateWorkoutPage() {
         setWorkoutName(`Entrenamiento ${new Date().toLocaleDateString()}`);
 
         const fetchTemplates = async () => {
-            const { data } = await supabase.from('workout_templates').select('*').order('name');
-            setAvailableTemplates(data || []);
+            try {
+                const q = query(collection(db, 'workout_templates'), orderBy('name'));
+                const querySnapshot = await getDocs(q);
+                const tmpls: any[] = [];
+                querySnapshot.forEach((doc) => {
+                    tmpls.push({ id: doc.id, ...doc.data() });
+                });
+                setAvailableTemplates(tmpls);
+            } catch (error) {
+                console.error("Error fetching templates:", error);
+            }
         };
         fetchTemplates();
     }, [role, user]);
@@ -113,26 +142,34 @@ export default function CreateWorkoutPage() {
 
     const handleLoadTemplate = async (templateId: string) => {
         setLoading(true);
-        // Fetch items
-        const { data: items, error } = await supabase
-            .from('workout_template_exercises')
-            .select('*')
-            .eq('template_id', templateId);
+        try {
+            // Fetch items from 'workout_template_exercises' where template_id == templateId
+            const q = query(collection(db, 'workout_template_exercises'), where('template_id', '==', templateId));
+            const querySnapshot = await getDocs(q);
 
-        if (items) {
-            const mapped: WorkoutExerciseConfig[] = items.map(item => ({
-                exerciseId: item.exercise_id,
-                tempId: Math.random().toString(36).substr(2, 9),
-                order: item.exercise_order,
-                sets: item.target_sets,
-                targetReps: item.target_reps,
-                tempo: item.tempo || "3010",
-                rest: item.rest_time ? String(item.rest_time) : "60"
-            }));
-            setSelectedExercises([...selectedExercises, ...mapped]);
+            const items: any[] = [];
+            querySnapshot.forEach((doc) => {
+                items.push(doc.data());
+            });
+
+            if (items.length > 0) {
+                const mapped: WorkoutExerciseConfig[] = items.map(item => ({
+                    exerciseId: item.exercise_id,
+                    tempId: Math.random().toString(36).substr(2, 9),
+                    order: item.exercise_order,
+                    sets: item.target_sets,
+                    targetReps: item.target_reps,
+                    tempo: item.tempo || "3010",
+                    rest: item.rest_time ? String(item.rest_time) : "60"
+                }));
+                setSelectedExercises([...selectedExercises, ...mapped]);
+            }
+        } catch (error) {
+            console.error("Error loading template:", error);
+        } finally {
+            setIsTemplateModalOpen(false);
+            setLoading(false);
         }
-        setIsTemplateModalOpen(false);
-        setLoading(false);
     };
 
     const handleSaveTemplate = async () => {
@@ -147,36 +184,40 @@ export default function CreateWorkoutPage() {
         setSaving(true);
         try {
             // 1. Create Template
-            const { data: tmpl, error: tError } = await supabase
-                .from('workout_templates')
-                .insert({ name: templateName })
-                .select()
-                .single();
+            const tmplRef = await addDoc(collection(db, 'workout_templates'), {
+                name: templateName,
+                created_at: new Date().toISOString()
+            });
 
-            if (tError) throw tError;
+            // 2. Insert Items (Batch)
+            const batch = writeBatch(db);
+            const itemsRef = collection(db, 'workout_template_exercises');
 
-            // 2. Insert Items
-            const items = selectedExercises.map(ex => ({
-                template_id: tmpl.id,
-                exercise_id: ex.exerciseId,
-                exercise_order: ex.order,
-                target_sets: ex.sets,
-                target_reps: ex.targetReps,
-                tempo: ex.tempo,
-                rest_time: ex.rest
-            }));
+            selectedExercises.forEach(ex => {
+                const newDocRef = doc(itemsRef); // Generate ID
+                batch.set(newDocRef, {
+                    template_id: tmplRef.id,
+                    exercise_id: ex.exerciseId,
+                    exercise_order: ex.order,
+                    target_sets: ex.sets,
+                    target_reps: ex.targetReps,
+                    tempo: ex.tempo,
+                    rest_time: ex.rest
+                });
+            });
 
-            const { error: itemsError } = await supabase
-                .from('workout_template_exercises')
-                .insert(items);
-
-            if (itemsError) throw itemsError;
+            await batch.commit();
 
             alert("Plantilla guardada correctamente!");
 
             // Refresh templates list
-            const { data: newTempls } = await supabase.from('workout_templates').select('*').order('name');
-            setAvailableTemplates(newTempls || []);
+            const q = query(collection(db, 'workout_templates'), orderBy('name'));
+            const querySnapshot = await getDocs(q);
+            const newTempls: any[] = [];
+            querySnapshot.forEach((doc) => {
+                newTempls.push({ id: doc.id, ...doc.data() });
+            });
+            setAvailableTemplates(newTempls);
 
         } catch (err: any) {
             console.error(err);
@@ -196,8 +237,8 @@ export default function CreateWorkoutPage() {
         setSaving(true);
         try {
             // 1. Create Workout
-            // Use selectedClientId if Admin, otherwise user.id
-            const targetUserId = (role === 'admin' || role === 'super_admin') ? selectedClientId : user.id;
+            // Use selectedClientId if Admin, otherwise user.uid
+            const targetUserId = (role === 'admin' || role === 'super_admin') ? selectedClientId : user.uid;
 
             if (!targetUserId) {
                 alert("Ningún Cliente Seleccionado");
@@ -205,53 +246,46 @@ export default function CreateWorkoutPage() {
                 return;
             }
 
-            const { data: workout, error: wError } = await supabase
-                .from('workouts')
-                .insert({
-                    user_id: targetUserId,
-                    name: workoutName,
-                    date: workoutDate,
-                    occurrences: occurrences
-                })
-                .select()
-                .single();
-
-            if (wError) throw wError;
+            const workoutRef = await addDoc(collection(db, 'workouts'), {
+                user_id: targetUserId,
+                name: workoutName,
+                date: workoutDate,
+                occurrences: occurrences,
+                created_at: new Date().toISOString(),
+                is_feedback_read: true // Default
+            });
 
             // 2. Create Logs (Sets)
-            // Flatten the configuration into individual set rows
-            const logsToInsert: any[] = [];
+            // Use batch for better performance/atomicity
+            const batch = writeBatch(db);
+            const logsRef = collection(db, 'workout_logs');
 
             selectedExercises.forEach(ex => {
                 // Loop through occurrences (Days)
                 for (let d = 1; d <= occurrences; d++) {
                     for (let i = 1; i <= ex.sets; i++) {
-                        logsToInsert.push({
-                            workout_id: workout.id,
+                        const newLogRef = doc(logsRef);
+                        batch.set(newLogRef, {
+                            workout_id: workoutRef.id,
                             exercise_id: ex.exerciseId,
                             set_number: i,
-                            day_number: d, // Add day number
-                            // Proposed schema fields:
+                            day_number: d,
                             exercise_order: ex.order,
                             target_reps: ex.targetReps,
                             tempo: ex.tempo,
                             rest_time: ex.rest,
-                            // Initial values
                             weight: null,
                             reps: null,
-                            completed: false
+                            completed: false,
+                            created_at: new Date().toISOString()
                         });
                     }
                 }
             });
 
-            const { error: logsError } = await supabase
-                .from('workout_logs')
-                .insert(logsToInsert);
+            await batch.commit();
 
-            if (logsError) throw logsError;
-
-            router.push(`/workout/${workout.id}`);
+            router.push(`/workout/${workoutRef.id}`);
 
         } catch (err: any) {
             console.error(err);
@@ -298,7 +332,7 @@ export default function CreateWorkoutPage() {
                                 <option value="" disabled>Seleccionar Cliente...</option>
                                 {clients.map(client => (
                                     <option key={client.id} value={client.id}>
-                                        {client.email} {client.id === user?.id ? '(Tú)' : ''}
+                                        {client.email} {client.id === user?.uid ? '(Tú)' : ''}
                                     </option>
                                 ))}
                             </select>

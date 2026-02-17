@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { db } from "@/lib/firebase";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { useAuth } from "@/context/AuthContext";
 import { User, Camera, Save, Loader2 } from "lucide-react";
 import Link from "next/link";
@@ -23,18 +24,24 @@ export default function ProfilePage() {
 
         const fetchProfile = async () => {
             setLoading(true);
-            const { data, error } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', user.id)
-                .single();
+            try {
+                const docRef = doc(db, 'users', user.uid);
+                const docSnap = await getDoc(docRef);
 
-            if (data) {
-                setFullName(data.full_name || user.user_metadata?.full_name || "");
-                setBirthdate(data.birthdate || "");
-                setAvatarUrl(data.avatar_url || "");
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    setFullName(data.full_name || user.displayName || "");
+                    setBirthdate(data.birthdate || "");
+                    setAvatarUrl(data.avatar_url || "");
+                } else {
+                    // Fallback to Auth defaults
+                    setFullName(user.displayName || "");
+                }
+            } catch (error) {
+                console.error("Error fetching profile", error);
+            } finally {
+                setLoading(false);
             }
-            setLoading(false);
         };
 
         fetchProfile();
@@ -45,23 +52,21 @@ export default function ProfilePage() {
         setSaving(true);
         setMessage("");
 
-        const { error } = await supabase
-            .from('profiles')
-            .update({
+        try {
+            const docRef = doc(db, 'users', user!.uid);
+            await setDoc(docRef, {
                 full_name: fullName,
                 birthdate: birthdate || null,
-                avatar_url: avatarUrl
-            })
-            .eq('id', user!.id);
+                avatar_url: avatarUrl,
+                updated_at: new Date().toISOString()
+            }, { merge: true });
 
-        if (error) {
-            setMessage("Error: " + error.message);
-        } else {
-            // Also update auth metadata for sync if possible, but skipping for now to keep it simple.
-            // Using profiles table as source of truth for this page.
             setMessage("Profile updated successfully!");
+        } catch (error: any) {
+            setMessage("Error: " + error.message);
+        } finally {
+            setSaving(false);
         }
-        setSaving(false);
     };
 
     if (loading || authLoading) return <div className="p-10 flex justify-center"><Loader2 className="animate-spin" /></div>;

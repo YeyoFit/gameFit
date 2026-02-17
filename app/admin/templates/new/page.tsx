@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { db } from "@/lib/firebase";
+import { collection, query, orderBy, getDocs, addDoc, doc, writeBatch } from "firebase/firestore";
 import { ArrowLeft, Plus, Save, Trash2, Dumbbell, GripVertical, Layers } from "lucide-react";
 import Link from "next/link";
 
@@ -43,10 +44,19 @@ export default function NewTemplatePage() {
     useEffect(() => {
         const fetchExercises = async () => {
             setLoading(true);
-            const { data, error } = await supabase.from('exercises').select('*').order('name');
-            if (error) console.error(error);
-            else setAvailableExercises(data || []);
-            setLoading(false);
+            try {
+                const q = query(collection(db, 'exercises'), orderBy('name'));
+                const querySnapshot = await getDocs(q);
+                const exList: Exercise[] = [];
+                querySnapshot.forEach((doc) => {
+                    exList.push({ id: doc.id, ...doc.data() } as Exercise);
+                });
+                setAvailableExercises(exList);
+            } catch (error) {
+                console.error(error);
+            } finally {
+                setLoading(false);
+            }
         };
         fetchExercises();
     }, []);
@@ -93,34 +103,29 @@ export default function NewTemplatePage() {
         setSaving(true);
         try {
             // 1. Create Template
-            const { data: template, error: tError } = await supabase
-                .from('workout_templates')
-                .insert({
-                    name: templateName,
-                    description: description
-                })
-                .select()
-                .single();
+            const templateRef = await addDoc(collection(db, 'workout_templates'), {
+                name: templateName,
+                description: description,
+                created_at: new Date().toISOString()
+            });
 
-            if (tError) throw tError;
+            // 2. Create Template Items (Batch)
+            const batch = writeBatch(db);
+            selectedExercises.forEach(ex => {
+                const itemRef = doc(collection(db, 'workout_template_exercises'));
+                batch.set(itemRef, {
+                    template_id: templateRef.id,
+                    exercise_id: ex.exerciseId,
+                    exercise_order: ex.order,
+                    target_sets: ex.sets,
+                    target_reps: ex.targetReps,
+                    tempo: ex.tempo,
+                    rest_time: ex.rest,
+                    notes: ex.notes
+                });
+            });
 
-            // 2. Create Template Items
-            const items = selectedExercises.map(ex => ({
-                template_id: template.id,
-                exercise_id: ex.exerciseId,
-                exercise_order: ex.order,
-                target_sets: ex.sets,
-                target_reps: ex.targetReps,
-                tempo: ex.tempo,
-                rest_time: ex.rest,
-                notes: ex.notes
-            }));
-
-            const { error: itemsError } = await supabase
-                .from('workout_template_exercises')
-                .insert(items);
-
-            if (itemsError) throw itemsError;
+            await batch.commit();
 
             // Success
             router.push('/admin/templates');

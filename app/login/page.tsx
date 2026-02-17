@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { auth } from "@/lib/firebase";
+import { signInWithEmailAndPassword } from "firebase/auth";
 import { useRouter } from "next/navigation";
-import { Dumbbell } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 export default function LoginPage() {
     const [email, setEmail] = useState("");
@@ -19,24 +20,14 @@ export default function LoginPage() {
         console.log("Attempting login with:", email);
 
         try {
-            // Create a timeout promise
-            const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error("Tiempo de espera agotado - verifica tu conexión")), 10000)
-            );
-
-            // Race against the login call
-            const authPromise = supabase.auth.signInWithPassword({
-                email,
-                password,
-            });
-
-            const { data, error } = await Promise.race([authPromise, timeoutPromise]) as any;
-
-            console.log("Login result:", { data, error });
-
-            if (error) throw error;
+            if (!auth) {
+                throw new Error("El servicio de autenticación no está disponible. Verifica la configuración de Firebase.");
+            }
+            // Firebase Login
+            await signInWithEmailAndPassword(auth, email, password);
 
             setMessage({ type: 'success', text: '¡Inicio de sesión exitoso! Redirigiendo...' });
+
             setTimeout(() => {
                 router.push("/dashboard");
             }, 500);
@@ -44,23 +35,27 @@ export default function LoginPage() {
         } catch (error: any) {
             console.error("Login error:", error);
 
-            // AGGRESSIVE RECOVERY: Check if session exists anyway
-            // Some network aborts or strange client states might still result in a valid session
-            console.log("Attempting aggressive session recovery...");
-            try {
-                const { data: { session } } = await supabase.auth.getSession();
-                if (session) {
-                    console.log("Session FOUND during recovery. Redirecting...");
-                    setMessage({ type: 'success', text: '¡Sesión verificada! Redirigiendo...' });
-                    // Force hard reload if needed or just push
-                    router.push("/dashboard");
-                    return;
-                }
-            } catch (recoveryErr) {
-                console.error("Recovery check failed:", recoveryErr);
+            let errorMessage = "Ocurrió un error al iniciar sesión.";
+
+            // Map Firebase Error Codes to Spanish user-friendly messages
+            switch (error.code) {
+                case 'auth/invalid-credential':
+                case 'auth/user-not-found':
+                case 'auth/wrong-password':
+                case 'auth/invalid-email':
+                    errorMessage = "Credenciales incorrectas.";
+                    break;
+                case 'auth/too-many-requests':
+                    errorMessage = "Demasiados intentos fallidos. Inténtalo de nuevo más tarde.";
+                    break;
+                case 'auth/network-request-failed':
+                    errorMessage = "Error de conexión. Verifica tu internet.";
+                    break;
+                default:
+                    errorMessage = error.message;
             }
 
-            setMessage({ type: 'error', text: error.message || "Ocurrió un error" });
+            setMessage({ type: 'error', text: errorMessage });
         } finally {
             setLoading(false);
         }
@@ -69,7 +64,6 @@ export default function LoginPage() {
     return (
         <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
             <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
-
 
                 <div className="flex justify-center mb-6">
                     <img src="/logo.png" alt="Strength & Metabolic" className="h-24 w-auto" />
@@ -114,8 +108,10 @@ export default function LoginPage() {
 
                     <button
                         type="submit"
-                        className="w-full bg-primary hover:bg-blue-900 text-white font-bold py-2 px-4 rounded transition-colors disabled:opacity-50"
+                        disabled={loading}
+                        className="w-full bg-primary hover:bg-blue-900 text-white font-bold py-2 px-4 rounded transition-colors disabled:opacity-50 flex items-center justify-center"
                     >
+                        {loading ? <Loader2 className="animate-spin w-5 h-5 mr-2" /> : null}
                         {loading ? "Procesando..." : "Iniciar Sesión"}
                     </button>
                 </form>

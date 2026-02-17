@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { db } from "@/lib/firebase"; // Default app
+import { collection, query, orderBy, getDocs, doc, updateDoc, setDoc, deleteDoc } from "firebase/firestore";
+import { getApp, getApps, initializeApp, deleteApp } from "firebase/app";
+import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth";
 import { useAuth } from "@/context/AuthContext";
 import { Plus, User, Shield, ShieldAlert, Mail, Trash2 } from "lucide-react";
 import Link from "next/link";
@@ -38,16 +41,30 @@ export default function UsersPage() {
     }, [authLoading]);
 
     const fetchUsers = async () => {
+        if (!db) {
+            setLoading(false);
+            return;
+        }
         setLoading(true);
-        const { data, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .order('role', { ascending: true });
-
-        if (error) console.error("Error fetching profiles:", error);
-        else setProfiles(data || []);
-
-        setLoading(false);
+        try {
+            const q = query(collection(db, 'users'), orderBy('role'));
+            const querySnapshot = await getDocs(q);
+            const usersList: Profile[] = [];
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                usersList.push({
+                    id: doc.id,
+                    email: data.email || "", // Email might not be in user doc if not copied, but we should have it
+                    role: data.role || "user",
+                    created_at: data.created_at
+                });
+            });
+            setProfiles(usersList);
+        } catch (error) {
+            console.error("Error fetching users:", error);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const resetForm = () => {
@@ -77,12 +94,9 @@ export default function UsersPage() {
         try {
             if (editingUser) {
                 // UPDATE FLOW (Database update only for Role for now)
-                const { error } = await supabase
-                    .from('profiles')
-                    .update({ role: newUserRole })
-                    .eq('id', editingUser.id);
-
-                if (error) throw error;
+                if (!db) return;
+                const userRef = doc(db, 'users', editingUser.id);
+                await updateDoc(userRef, { role: newUserRole });
 
                 setFormStatus('success');
                 setFormMessage(`User updated successfully!`);
@@ -92,29 +106,52 @@ export default function UsersPage() {
                 }, 1500);
 
             } else {
-                // CREATE FLOW
-                const res = await fetch('/api/users/create', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
+                // CREATE FLOW (Client-side workaround using secondary app)
+                // 1. Initialize secondary app
+                const firebaseConfig = {
+                    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+                    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+                    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+                    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+                    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+                    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
+                };
+
+                const secondaryApp = initializeApp(firebaseConfig, "Secondary");
+                const secondaryAuth = getAuth(secondaryApp);
+
+                try {
+                    // 2. Create User
+                    const userCredential = await createUserWithEmailAndPassword(secondaryAuth, newUserEmail, newUserPassword);
+                    const newUid = userCredential.user.uid;
+
+                    // 3. Sign out from secondary app immediately
+                    await signOut(secondaryAuth);
+
+                    // 4. Create User Document in Firestore (using PRIMARY admin auth)
+                    // We can write to 'users' collection because we are Admin
+                    if (!db) return;
+                    await setDoc(doc(db, 'users', newUid), {
                         email: newUserEmail,
-                        password: newUserPassword,
                         role: newUserRole,
-                        requesterId: currentUser?.id
-                    })
-                });
+                        created_at: new Date().toISOString()
+                    });
 
-                const data = await res.json();
+                    setFormStatus('success');
+                    setFormMessage(`User ${newUserEmail} created successfully!`);
+                    setNewUserEmail("");
+                    setNewUserPassword("");
+                    fetchUsers(); // Refresh list
+                    setTimeout(() => {
+                        resetForm();
+                    }, 1500);
 
-                if (!res.ok) {
-                    throw new Error(data.error || "Failed to create user");
+                } catch (createError: any) {
+                    throw createError;
+                } finally {
+                    // 5. Cleanup secondary app
+                    deleteApp(secondaryApp);
                 }
-
-                setFormStatus('success');
-                setFormMessage(`User ${newUserEmail} created successfully!`);
-                setNewUserEmail("");
-                setNewUserPassword("");
-                fetchUsers(); // Refresh list
             }
 
         } catch (err: any) {
@@ -126,22 +163,20 @@ export default function UsersPage() {
     const handleDeleteUser = async (userId: string) => {
         setLoading(true);
         try {
-            const res = await fetch('/api/users/delete', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    userId,
-                    requesterId: currentUser?.id
-                })
-            });
+            // Soft Delete / Hard Delete from Firestore
+            // We cannot delete from Auth without Admin SDK.
+            // But we can delete the 'users' document, which effectively hides them and removes their role.
 
-            if (!res.ok) {
-                const errorData = await res.json();
-                alert(`FAILED: ${res.status} - ${JSON.stringify(errorData)}`);
-            } else {
-                alert("SUCCESS: User deleted successfully");
-                fetchUsers();
-            }
+            // 1. Delete user document from Firestore
+            if (!db) throw new Error("Database not initialized");
+            await deleteDoc(doc(db, 'users', userId));
+
+            // Optional: We could call the API if it was working, but we know it's not migrated.
+            // For now, this is a "Ban" effectively.
+
+            alert("SUCCESS: User data deleted from database. (Auth account remains but inactive)");
+            fetchUsers();
+
         } catch (err: any) {
             console.error("Delete error:", err);
             alert(`CRITICAL ERROR: ${err.message}`);

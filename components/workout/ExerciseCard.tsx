@@ -1,17 +1,19 @@
 "use client";
 
 import { Exercise, LogSet } from "@/lib/mockData";
-import { Play, Trophy, Camera, Video, Loader2 } from "lucide-react";
+import { Play, Trophy, Camera, Video, Loader2, MessageCircle, MessageSquare } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Modal } from "@/components/ui/Modal";
-import { supabase } from "@/lib/supabaseClient";
+import { storage } from "@/lib/firebase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 interface ExerciseCardProps {
     exercise: Exercise;
-    onLogChange: (exerciseId: string, setIndex: number, field: 'weight' | 'reps' | 'completed' | 'videoUrl', value: any) => void;
+    onLogChange: (exerciseId: string, setIndex: number, field: 'weight' | 'reps' | 'completed' | 'videoUrl' | 'coachComment', value: any) => void;
+    isCoach?: boolean;
 }
 
-export function ExerciseCard({ exercise, onLogChange }: ExerciseCardProps) {
+export function ExerciseCard({ exercise, onLogChange, isCoach = false }: ExerciseCardProps) {
     const logs = exercise.logs; // Use logs from props
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [uploadingSetIndex, setUploadingSetIndex] = useState<number | null>(null);
@@ -59,24 +61,16 @@ export function ExerciseCard({ exercise, onLogChange }: ExerciseCardProps) {
 
         try {
             const fileName = `${Date.now()}_${file.name}`;
-            const { data, error } = await supabase.storage
-                .from('workout-videos')
-                .upload(fileName, file);
+            const storageRef = ref(storage, `workout-videos/${fileName}`);
 
-            if (error) {
-                console.error("Upload error:", error);
-                alert("Error uploading video.");
-                return;
-            }
+            await uploadBytes(storageRef, file);
+            const downloadURL = await getDownloadURL(storageRef);
 
-            const { data: publicData } = supabase.storage
-                .from('workout-videos')
-                .getPublicUrl(fileName);
-
-            onLogChange(exercise.id, setIndex, 'videoUrl', publicData.publicUrl);
+            onLogChange(exercise.id, setIndex, 'videoUrl', downloadURL);
 
         } catch (err) {
-            console.error(err);
+            console.error("Upload error:", err);
+            alert("Error uploading video.");
         } finally {
             setUploadingSetIndex(null);
         }
@@ -143,58 +137,83 @@ export function ExerciseCard({ exercise, onLogChange }: ExerciseCardProps) {
                         </div>
 
                         {logs.map((log, idx) => (
-                            <div key={idx} className={`grid gap-2 mb-2 items-center transition-colors ${log.completed ? 'opacity-50' : ''}`} style={{ gridTemplateColumns: '30px 1fr 1fr 50px 40px' }}>
-                                <div className="font-bold text-gray-400 text-sm text-center">{idx + 1}</div>
-                                <div className="relative w-full">
+                            <div key={idx} className="mb-2">
+                                <div className={`grid gap-2 mb-2 items-center transition-colors ${log.completed ? 'opacity-50' : ''}`} style={{ gridTemplateColumns: '30px 1fr 1fr 50px 40px' }}>
+                                    <div className="font-bold text-gray-400 text-sm text-center">{idx + 1}</div>
+                                    <div className="relative w-full">
+                                        <input
+                                            type="number"
+                                            value={log.weight ?? ''}
+                                            onChange={(e) => handleInputChange(idx, 'weight', e.target.value)}
+                                            className={`w-full min-w-0 border p-2 text-center text-primary font-bold rounded-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none ${log.completed ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-300'
+                                                } ${log.isPR ? 'border-yellow-400 ring-2 ring-yellow-400 bg-yellow-50' : ''}`} // Highlight PR
+                                            placeholder={log.prevWeight ? String(log.prevWeight) : "0"}
+                                        />
+                                        {log.isPR && (
+                                            <div className="absolute -top-2 -right-2 bg-yellow-400 rounded-full p-0.5 shadow-sm z-10 animate-bounce">
+                                                <Trophy className="w-3 h-3 text-white fill-current" />
+                                            </div>
+                                        )}
+                                    </div>
                                     <input
                                         type="number"
-                                        value={log.weight ?? ''}
-                                        onChange={(e) => handleInputChange(idx, 'weight', e.target.value)}
+                                        value={log.reps ?? ''}
+                                        onChange={(e) => handleInputChange(idx, 'reps', e.target.value)}
                                         className={`w-full min-w-0 border p-2 text-center text-primary font-bold rounded-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none ${log.completed ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-300'
-                                            } ${log.isPR ? 'border-yellow-400 ring-2 ring-yellow-400 bg-yellow-50' : ''}`} // Highlight PR
-                                        placeholder={log.prevWeight ? String(log.prevWeight) : "0"}
+                                            }`}
+                                        placeholder={log.prevReps ? String(log.prevReps) : "0"}
                                     />
-                                    {log.isPR && (
-                                        <div className="absolute -top-2 -right-2 bg-yellow-400 rounded-full p-0.5 shadow-sm z-10 animate-bounce">
-                                            <Trophy className="w-3 h-3 text-white fill-current" />
+                                    <div className="flex justify-center">
+                                        <input
+                                            type="checkbox"
+                                            checked={log.completed}
+                                            onChange={(e) => onLogChange(exercise.id, idx, 'completed', e.target.checked)}
+                                            className="w-6 h-6 text-green-600 rounded focus:ring-green-500 border-gray-300 cursor-pointer"
+                                        />
+                                    </div>
+                                    <div className="flex justify-center items-center">
+                                        {uploadingSetIndex === idx ? (
+                                            <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                                        ) : log.videoUrl ? (
+                                            <a href={log.videoUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700">
+                                                <Video className="w-6 h-6" />
+                                            </a>
+                                        ) : (
+                                            <label className="cursor-pointer text-gray-400 hover:text-gray-600 flex items-center justify-center w-full h-full">
+                                                <Camera className="w-5 h-5" />
+                                                <input
+                                                    type="file"
+                                                    accept="video/*"
+                                                    className="hidden"
+                                                    onChange={(e) => handleFileUpload(e, idx)}
+                                                />
+                                            </label>
+                                        )}
+                                    </div>
+                                </div>
+                                {/* Coach Comment Row */}
+                                {(log.coachComment || isCoach) && (
+                                    <div className={`col-span-full text-left text-xs p-2 rounded flex items-start gap-2 ml-8 ${isCoach ? 'bg-yellow-50' : 'bg-blue-50'}`}>
+                                        <MessageSquare className="w-4 h-4 mt-0.5 text-yellow-600 flex-shrink-0" />
+                                        <div className="flex-1">
+                                            {isCoach ? (
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={log.coachComment || ''}
+                                                        onChange={(e) => onLogChange(exercise.id, idx, 'coachComment', e.target.value)}
+                                                        placeholder="Add feedback for this set..."
+                                                        className="w-full bg-transparent border-b border-yellow-200 focus:outline-none focus:border-yellow-500 text-gray-700"
+                                                    />
+                                                </div>
+                                            ) : (
+                                                <span className="text-gray-800 font-medium">
+                                                    <span className="font-bold text-yellow-700">Coach:</span> {log.coachComment}
+                                                </span>
+                                            )}
                                         </div>
-                                    )}
-                                </div>
-                                <input
-                                    type="number"
-                                    value={log.reps ?? ''}
-                                    onChange={(e) => handleInputChange(idx, 'reps', e.target.value)}
-                                    className={`w-full min-w-0 border p-2 text-center text-primary font-bold rounded-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none ${log.completed ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-300'
-                                        }`}
-                                    placeholder={log.prevReps ? String(log.prevReps) : "0"}
-                                />
-                                <div className="flex justify-center">
-                                    <input
-                                        type="checkbox"
-                                        checked={log.completed}
-                                        onChange={(e) => onLogChange(exercise.id, idx, 'completed', e.target.checked)}
-                                        className="w-6 h-6 text-green-600 rounded focus:ring-green-500 border-gray-300 cursor-pointer"
-                                    />
-                                </div>
-                                <div className="flex justify-center items-center">
-                                    {uploadingSetIndex === idx ? (
-                                        <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                                    ) : log.videoUrl ? (
-                                        <a href={log.videoUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700">
-                                            <Video className="w-6 h-6" />
-                                        </a>
-                                    ) : (
-                                        <label className="cursor-pointer text-gray-400 hover:text-gray-600 flex items-center justify-center w-full h-full">
-                                            <Camera className="w-5 h-5" />
-                                            <input
-                                                type="file"
-                                                accept="video/*"
-                                                className="hidden"
-                                                onChange={(e) => handleFileUpload(e, idx)}
-                                            />
-                                        </label>
-                                    )}
-                                </div>
+                                    </div>
+                                )}
                             </div>
                         ))}
                     </div>
@@ -224,37 +243,40 @@ export function ExerciseCard({ exercise, onLogChange }: ExerciseCardProps) {
                     </div>
 
                 </div>
-            </div>
+            </div >
 
             {/* Video Modal */}
-            <Modal
+            < Modal
                 isOpen={isModalOpen}
-                onClose={() => setIsModalOpen(false)}
+                onClose={() => setIsModalOpen(false)
+                }
                 title={exercise.name}
             >
-                {exercise.videoUrl ? (
-                    <iframe
-                        width="100%"
-                        height="500"
-                        src={(() => {
-                            const url = exercise.videoUrl;
-                            if (url.includes("youtube.com/watch?v=")) {
-                                return url.replace("watch?v=", "embed/");
-                            }
-                            if (url.includes("youtu.be/")) {
-                                return url.replace("youtu.be/", "www.youtube.com/embed/");
-                            }
-                            return url;
-                        })()}
-                        title="Video player"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        allowFullScreen
-                        className="w-full aspect-video"
-                    ></iframe>
-                ) : (
-                    <div className="text-white">No video available</div>
-                )}
-            </Modal>
+                {
+                    exercise.videoUrl ? (
+                        <iframe
+                            width="100%"
+                            height="500"
+                            src={(() => {
+                                const url = exercise.videoUrl;
+                                if (url.includes("youtube.com/watch?v=")) {
+                                    return url.replace("watch?v=", "embed/");
+                                }
+                                if (url.includes("youtu.be/")) {
+                                    return url.replace("youtu.be/", "www.youtube.com/embed/");
+                                }
+                                return url;
+                            })()}
+                            title="Video player"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                            className="w-full aspect-video"
+                        ></iframe>
+                    ) : (
+                        <div className="text-white">No video available</div>
+                    )
+                }
+            </Modal >
         </>
     );
 }

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { db } from "@/lib/firebase";
+import { doc, getDoc, collection, query, where, orderBy, getDocs, deleteDoc, writeBatch } from "firebase/firestore";
 import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Plus, Calendar, Activity, TrendingUp, Edit3, Trash2 } from "lucide-react";
 import Link from "next/link";
@@ -37,32 +38,63 @@ export default function ClientDashboardPage() {
     const fetchData = async () => {
         setLoading(true);
 
-        // 1. Fetch Profile
-        const { data: pData } = await supabase.from('profiles').select('*').eq('id', userId).single();
-        if (pData) setProfile(pData);
+        try {
+            // 1. Fetch Profile
+            const userDocRef = doc(db, 'users', userId);
+            const userSnap = await getDoc(userDocRef);
+            if (userSnap.exists()) {
+                setProfile(userSnap.data() as Profile);
+            }
 
-        // 2. Fetch Workouts
-        const { data: wData } = await supabase
-            .from('workouts')
-            .select('*')
-            .eq('user_id', userId)
-            .order('date', { ascending: false });
-
-        if (wData) setWorkouts(wData);
-
-        setLoading(false);
+            // 2. Fetch Workouts
+            const qWorkouts = query(
+                collection(db, 'workouts'),
+                where('user_id', '==', userId),
+                orderBy('date', 'desc')
+            );
+            const wSnap = await getDocs(qWorkouts);
+            const wData: DbWorkout[] = [];
+            wSnap.forEach(doc => {
+                const data = doc.data();
+                wData.push({
+                    id: doc.id,
+                    name: data.name,
+                    date: data.date,
+                    created_at: data.created_at
+                });
+            });
+            setWorkouts(wData);
+        } catch (error) {
+            console.error("Error fetching data:", error);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleDeleteWorkout = async (workoutId: string) => {
         if (!confirm("Are you sure you want to delete this workout? This cannot be undone.")) return;
 
-        const { error } = await supabase.from('workouts').delete().eq('id', workoutId);
+        try {
+            // Batch delete logs and workout
+            const batch = writeBatch(db);
 
-        if (error) {
-            alert("Error deleting workout: " + error.message);
-        } else {
+            // Get logs
+            const qLogs = query(collection(db, 'workout_logs'), where('workout_id', '==', workoutId));
+            const logsSnap = await getDocs(qLogs);
+            logsSnap.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+
+            // Delete workout
+            const workoutRef = doc(db, 'workouts', workoutId);
+            batch.delete(workoutRef);
+
+            await batch.commit();
+
             // Refresh list
             fetchData();
+        } catch (error: any) {
+            alert("Error deleting workout: " + error.message);
         }
     };
 

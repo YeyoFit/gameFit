@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { db } from "@/lib/firebase";
+import { collection, query, orderBy, getDocs, doc, deleteDoc, writeBatch } from "firebase/firestore";
 import Link from "next/link";
-import { ArrowLeft, Plus, Search, Trash2, Edit3, Dumbbell } from "lucide-react";
+import { ArrowLeft, Plus, Search, Trash2, Edit3, Dumbbell, Database, Loader2 } from "lucide-react";
+import { SCRAPED_EXERCISES } from "@/lib/scrapedExercises";
 
 type Exercise = {
     id: string;
@@ -16,6 +18,7 @@ type Exercise = {
 export default function ExercisesPage() {
     const [exercises, setExercises] = useState<Exercise[]>([]);
     const [loading, setLoading] = useState(true);
+    const [seeding, setSeeding] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
 
     useEffect(() => {
@@ -23,26 +26,67 @@ export default function ExercisesPage() {
     }, []);
 
     const fetchExercises = async () => {
+        if (!db) {
+            setLoading(false);
+            return;
+        }
         setLoading(true);
-        const { data, error } = await supabase
-            .from('exercises')
-            .select('*')
-            .order('name');
+        try {
+            const q = query(collection(db, 'exercises'), orderBy('name'));
+            const querySnapshot = await getDocs(q);
+            const exList: Exercise[] = [];
+            querySnapshot.forEach((doc) => {
+                exList.push({ id: doc.id, ...doc.data() } as Exercise);
+            });
+            setExercises(exList);
+        } catch (error) {
+            console.error("Error loading exercises:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
-        if (error) console.error(error);
-        else setExercises(data || []);
+    const handleSeed = async () => {
+        if (!db) return;
+        if (!confirm(`¿Estás seguro de que quieres cargar ${SCRAPED_EXERCISES.length} ejercicios predefinidos?`)) return;
 
-        setLoading(false);
+        setSeeding(true);
+        try {
+            const batch = writeBatch(db);
+            const exercisesRef = collection(db, 'exercises');
+
+            // Firestore batches are limited to 500 operations
+            // We have ~350, so one batch is fine.
+            SCRAPED_EXERCISES.forEach((ex) => {
+                const newDocRef = doc(exercisesRef);
+                batch.set(newDocRef, {
+                    name: ex.name,
+                    phase: ex.phase,
+                    body_part: ex.bodyPart,
+                    created_at: new Date().toISOString()
+                });
+            });
+
+            await batch.commit();
+            alert("¡Biblioteca sembrada con éxito!");
+            fetchExercises();
+        } catch (error: any) {
+            console.error("Error seeding:", error);
+            alert("Error al sembrar: " + error.message);
+        } finally {
+            setSeeding(false);
+        }
     };
 
     const handleDelete = async (id: string) => {
+        if (!db) return;
         if (!confirm("¿Estás seguro? Esto podría afectar entrenamientos pasados si no se maneja correctamente.")) return;
 
-        const { error } = await supabase.from('exercises').delete().eq('id', id);
-        if (error) {
-            alert("Error al eliminar: " + error.message);
-        } else {
+        try {
+            await deleteDoc(doc(db, 'exercises', id));
             setExercises(prev => prev.filter(e => e.id !== id));
+        } catch (error: any) {
+            alert("Error al eliminar: " + error.message);
         }
     };
 
@@ -66,13 +110,25 @@ export default function ExercisesPage() {
                     <h1 className="text-3xl font-bold text-gray-900 mb-2">Biblioteca de Ejercicios</h1>
                     <p className="text-gray-500">Gestionar ejercicios y videos disponibles.</p>
                 </div>
-                <Link
-                    href="/admin/exercises/new"
-                    className="bg-primary hover:bg-blue-900 text-white font-bold py-2 px-4 rounded shadow flex items-center justify-center"
-                >
-                    <Plus className="w-5 h-5 mr-2" />
-                    Añadir Ejercicio
-                </Link>
+                <div className="flex gap-2">
+                    {exercises.length === 0 && !loading && (
+                        <button
+                            onClick={handleSeed}
+                            disabled={seeding}
+                            className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded shadow flex items-center justify-center transition-colors"
+                        >
+                            {seeding ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Database className="w-5 h-5 mr-2" />}
+                            Sembrar Biblioteca
+                        </button>
+                    )}
+                    <Link
+                        href="/admin/exercises/new"
+                        className="bg-primary hover:bg-blue-900 text-white font-bold py-2 px-4 rounded shadow flex items-center justify-center"
+                    >
+                        <Plus className="w-5 h-5 mr-2" />
+                        Añadir Ejercicio
+                    </Link>
+                </div>
             </div>
 
             {/* Search */}
@@ -92,7 +148,17 @@ export default function ExercisesPage() {
                 {loading ? (
                     <div className="p-10 text-center text-gray-500">Cargando biblioteca...</div>
                 ) : filteredExercises.length === 0 ? (
-                    <div className="p-10 text-center text-gray-500">No se encontraron ejercicios.</div>
+                    <div className="p-20 text-center text-gray-500 flex flex-col items-center">
+                        <Dumbbell className="w-12 h-12 text-gray-300 mb-4" />
+                        <p className="mb-4">No se encontraron ejercicios en la base de datos.</p>
+                        <button
+                            onClick={handleSeed}
+                            disabled={seeding}
+                            className="text-primary font-bold hover:underline flex items-center"
+                        >
+                            {seeding ? "Cargando..." : "Haz clic aquí para cargar la biblioteca inicial"}
+                        </button>
+                    </div>
                 ) : (
                     <ul className="divide-y divide-gray-200">
                         {filteredExercises.map((ex) => (
