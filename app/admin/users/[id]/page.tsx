@@ -36,11 +36,16 @@ export default function ClientDashboardPage() {
     }, [userId]);
 
     const fetchData = async () => {
+        const firestore = db;
+        if (!firestore) {
+            setLoading(false);
+            return;
+        }
         setLoading(true);
 
         try {
             // 1. Fetch Profile
-            const userDocRef = doc(db, 'users', userId);
+            const userDocRef = doc(firestore, 'users', userId);
             const userSnap = await getDoc(userDocRef);
             if (userSnap.exists()) {
                 setProfile(userSnap.data() as Profile);
@@ -48,7 +53,7 @@ export default function ClientDashboardPage() {
 
             // 2. Fetch Workouts
             const qWorkouts = query(
-                collection(db, 'workouts'),
+                collection(firestore, 'workouts'),
                 where('user_id', '==', userId),
                 orderBy('date', 'desc')
             );
@@ -73,20 +78,22 @@ export default function ClientDashboardPage() {
 
     const handleDeleteWorkout = async (workoutId: string) => {
         if (!confirm("Are you sure you want to delete this workout? This cannot be undone.")) return;
+        const firestore = db;
+        if (!firestore) return;
 
         try {
             // Batch delete logs and workout
-            const batch = writeBatch(db);
+            const batch = writeBatch(firestore);
 
             // Get logs
-            const qLogs = query(collection(db, 'workout_logs'), where('workout_id', '==', workoutId));
+            const qLogs = query(collection(firestore, 'workout_logs'), where('workout_id', '==', workoutId));
             const logsSnap = await getDocs(qLogs);
             logsSnap.forEach(doc => {
                 batch.delete(doc.ref);
             });
 
             // Delete workout
-            const workoutRef = doc(db, 'workouts', workoutId);
+            const workoutRef = doc(firestore, 'workouts', workoutId);
             batch.delete(workoutRef);
 
             await batch.commit();

@@ -15,9 +15,14 @@ export default function TemplatesPage() {
     }, []);
 
     const fetchTemplates = async () => {
+        const firestore = db;
+        if (!firestore) {
+            setLoading(false);
+            return;
+        }
         setLoading(true);
         try {
-            const q = query(collection(db, 'workout_templates'), orderBy('name'));
+            const q = query(collection(firestore, 'workout_templates'), orderBy('name'));
             const querySnapshot = await getDocs(q);
             const tmplList: any[] = [];
             querySnapshot.forEach((doc) => {
@@ -32,20 +37,22 @@ export default function TemplatesPage() {
     };
 
     const handleDelete = async (id: string) => {
+        const firestore = db;
         if (!confirm("Delete this template?")) return;
+        if (!firestore) return;
 
         try {
-            const batch = writeBatch(db);
+            const batch = writeBatch(firestore);
 
             // Delete template exercises first
-            const qEx = query(collection(db, 'workout_template_exercises'), where('template_id', '==', id));
+            const qEx = query(collection(firestore, 'workout_template_exercises'), where('template_id', '==', id));
             const exSnap = await getDocs(qEx);
             exSnap.forEach(doc => {
                 batch.delete(doc.ref);
             });
 
             // Delete template
-            const tmplRef = doc(db, 'workout_templates', id);
+            const tmplRef = doc(firestore, 'workout_templates', id);
             batch.delete(tmplRef);
 
             await batch.commit();

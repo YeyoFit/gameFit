@@ -17,9 +17,14 @@ export default function EditExercisePage() {
     useEffect(() => {
         if (!id) return;
         const fetchEx = async () => {
+            const firestore = db;
+            if (!firestore) {
+                setLoading(false);
+                return;
+            }
             setLoading(true);
             try {
-                const docRef = doc(db, 'exercises', id);
+                const docRef = doc(firestore, 'exercises', id);
                 const docSnap = await getDoc(docRef);
                 if (docSnap.exists()) {
                     setExercise({ id: docSnap.id, ...docSnap.data() });

@@ -29,19 +29,23 @@ export default function AdminDashboard() {
         }
 
         const fetchData = async () => {
+            const firestore = db;
+            if (!firestore) {
+                setLoading(false);
+                return;
+            }
             setLoading(true);
 
             try {
                 // 1. Fetch Clients
-                // Note: requires index on 'role' if mixed with other filters, but simple where is fine.
-                const qClients = query(collection(db, 'users'), where('role', '==', 'user'));
+                const qClients = query(collection(firestore, 'users'), where('role', '==', 'user'));
                 const clientsSnap = await getDocs(qClients);
                 const clientsData: any[] = [];
                 clientsSnap.forEach(doc => clientsData.push({ id: doc.id, ...doc.data() }));
                 setClients(clientsData);
 
                 // 2. Fetch Recent Activity
-                const qActivity = query(collection(db, 'workouts'), orderBy('created_at', 'desc'), limit(5));
+                const qActivity = query(collection(firestore, 'workouts'), orderBy('created_at', 'desc'), limit(5));
                 const activitySnap = await getDocs(qActivity);
                 const activityData: any[] = [];
                 activitySnap.forEach(doc => activityData.push({ id: doc.id, ...doc.data() }));
@@ -61,20 +65,22 @@ export default function AdminDashboard() {
         e.preventDefault();
         e.stopPropagation();
         if (!confirm("¿Seguro que quieres borrar este entrenamiento?")) return;
+        const firestore = db;
+        if (!firestore) return;
 
         try {
             // Batch delete logs and workout
-            const batch = writeBatch(db);
+            const batch = writeBatch(firestore);
 
             // 1. Get logs
-            const qLogs = query(collection(db, 'workout_logs'), where('workout_id', '==', workoutId));
+            const qLogs = query(collection(firestore, 'workout_logs'), where('workout_id', '==', workoutId));
             const logsSnap = await getDocs(qLogs);
             logsSnap.forEach(doc => {
                 batch.delete(doc.ref);
             });
 
             // 2. Delete workout
-            const workoutRef = doc(db, 'workouts', workoutId);
+            const workoutRef = doc(firestore, 'workouts', workoutId);
             batch.delete(workoutRef);
 
             await batch.commit();

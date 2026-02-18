@@ -26,13 +26,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const router = useRouter();
 
     useEffect(() => {
-        if (!auth) {
+        const firebaseAuth = auth;
+        if (!firebaseAuth) {
             setLoading(false);
             return;
         }
 
         // Firebase Auth Listener
-        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+        const unsubscribe = onAuthStateChanged(firebaseAuth, async (currentUser) => {
             console.log("Auth State Changed:", currentUser?.email);
 
             if (currentUser) {
@@ -50,7 +51,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, []);
 
     const fetchUserRole = async (currentUser: FirebaseUser) => {
-        if (!db) {
+        const firestore = db;
+        if (!firestore) {
             setRole('user');
             setLoading(false);
             return;
@@ -62,7 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 setRole('super_admin');
 
                 // Ensure this user exists in Firestore with correct role
-                const userRef = doc(db, "users", currentUser.uid);
+                const userRef = doc(firestore, "users", currentUser.uid);
                 await setDoc(userRef, {
                     email: currentUser.email,
                     role: 'super_admin',
@@ -73,7 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 return;
             }
 
-            const userRef = doc(db, "users", currentUser.uid);
+            const userRef = doc(firestore, "users", currentUser.uid);
             const userSnap = await getDoc(userRef);
 
             if (userSnap.exists()) {
@@ -99,9 +101,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     const signOut = async () => {
-        if (!auth) return;
+        const firebaseAuth = auth;
+        if (!firebaseAuth) return;
         try {
-            await firebaseSignOut(auth);
+            await firebaseSignOut(firebaseAuth);
             router.push("/login");
         } catch (error) {
             console.error("Error signing out:", error);

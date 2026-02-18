@@ -55,13 +55,14 @@ export function ExerciseCard({ exercise, onLogChange, isCoach = false }: Exercis
 
     const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, setIndex: number) => {
         const file = event.target.files?.[0];
-        if (!file) return;
+        const firebaseStorage = storage;
+        if (!file || !firebaseStorage) return;
 
         setUploadingSetIndex(setIndex);
 
         try {
             const fileName = `${Date.now()}_${file.name}`;
-            const storageRef = ref(storage, `workout-videos/${fileName}`);
+            const storageRef = ref(firebaseStorage, `workout-videos/${fileName}`);
 
             await uploadBytes(storageRef, file);
             const downloadURL = await getDownloadURL(storageRef);

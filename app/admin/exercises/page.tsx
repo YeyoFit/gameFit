@@ -26,13 +26,14 @@ export default function ExercisesPage() {
     }, []);
 
     const fetchExercises = async () => {
-        if (!db) {
+        const firestore = db;
+        if (!firestore) {
             setLoading(false);
             return;
         }
         setLoading(true);
         try {
-            const q = query(collection(db, 'exercises'), orderBy('name'));
+            const q = query(collection(firestore, 'exercises'), orderBy('name'));
             const querySnapshot = await getDocs(q);
             const exList: Exercise[] = [];
             querySnapshot.forEach((doc) => {
@@ -47,13 +48,14 @@ export default function ExercisesPage() {
     };
 
     const handleSeed = async () => {
-        if (!db) return;
+        const firestore = db;
+        if (!firestore) return;
         if (!confirm(`¿Estás seguro de que quieres cargar ${SCRAPED_EXERCISES.length} ejercicios predefinidos?`)) return;
 
         setSeeding(true);
         try {
-            const batch = writeBatch(db);
-            const exercisesRef = collection(db, 'exercises');
+            const batch = writeBatch(firestore);
+            const exercisesRef = collection(firestore, 'exercises');
 
             // Firestore batches are limited to 500 operations
             // We have ~350, so one batch is fine.
@@ -79,11 +81,12 @@ export default function ExercisesPage() {
     };
 
     const handleDelete = async (id: string) => {
-        if (!db) return;
+        const firestore = db;
+        if (!firestore) return;
         if (!confirm("¿Estás seguro? Esto podría afectar entrenamientos pasados si no se maneja correctamente.")) return;
 
         try {
-            await deleteDoc(doc(db, 'exercises', id));
+            await deleteDoc(doc(firestore, 'exercises', id));
             setExercises(prev => prev.filter(e => e.id !== id));
         } catch (error: any) {
             alert("Error al eliminar: " + error.message);

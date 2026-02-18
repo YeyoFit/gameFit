@@ -44,6 +44,11 @@ function ReportsContent() {
     }, [user, authLoading]);
 
     const fetchData = async () => {
+        const firestore = db;
+        if (!firestore) {
+            setLoading(false);
+            return;
+        }
         setLoading(true);
 
         const idToFetch = (role === 'admin' || role === 'super_admin') && targetUserId
@@ -53,14 +58,14 @@ function ReportsContent() {
         try {
             // 1. Fetch Exercises (Map)
             const exMap = new Map<string, any>();
-            const qEx = query(collection(db, 'exercises')); // Fetch all
+            const qEx = query(collection(firestore, 'exercises')); // Fetch all
             const exSnap = await getDocs(qEx);
             exSnap.forEach(doc => {
                 exMap.set(doc.id, doc.data());
             });
 
             // 2. Fetch User Workouts
-            const qWo = query(collection(db, 'workouts'), where('user_id', '==', idToFetch));
+            const qWo = query(collection(firestore, 'workouts'), where('user_id', '==', idToFetch));
             const woSnap = await getDocs(qWo);
 
             const workoutsMap = new Map<string, any>();
@@ -81,7 +86,7 @@ function ReportsContent() {
             const chunkSize = 10; // Firestore 'in' limit is actually 30, but 10 is safe
             for (let i = 0; i < workoutIds.length; i += chunkSize) {
                 const chunk = workoutIds.slice(i, i + chunkSize);
-                const qLogs = query(collection(db, 'workout_logs'), where('workout_id', 'in', chunk));
+                const qLogs = query(collection(firestore, 'workout_logs'), where('workout_id', 'in', chunk));
                 const logsSnap = await getDocs(qLogs);
                 logsSnap.forEach(doc => {
                     allLogs.push(doc.data());

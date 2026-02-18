@@ -23,9 +23,14 @@ export default function ProfilePage() {
         if (!user) return;
 
         const fetchProfile = async () => {
+            const firestore = db;
+            if (!firestore) {
+                setLoading(false);
+                return;
+            }
             setLoading(true);
             try {
-                const docRef = doc(db, 'users', user.uid);
+                const docRef = doc(firestore, 'users', user.uid);
                 const docSnap = await getDoc(docRef);
 
                 if (docSnap.exists()) {
@@ -49,11 +54,14 @@ export default function ProfilePage() {
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!user || !db) return;
         setSaving(true);
         setMessage("");
 
         try {
-            const docRef = doc(db, 'users', user!.uid);
+            const firestore = db;
+            if (!firestore) return;
+            const docRef = doc(firestore, 'users', user!.uid);
             await setDoc(docRef, {
                 full_name: fullName,
                 birthdate: birthdate || null,

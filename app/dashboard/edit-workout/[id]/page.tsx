@@ -48,26 +48,30 @@ export default function EditWorkoutPage() {
 
     useEffect(() => {
         const init = async () => {
-            if (!workoutId) return;
+            const firestore = db;
+            if (!workoutId || !firestore) {
+                if (!firestore) setLoading(false);
+                return;
+            }
             setLoading(true);
 
             try {
                 // 1. Fetch Exercises (Reference)
-                const qEx = query(collection(db, 'exercises'), orderBy('name'));
+                const qEx = query(collection(firestore, 'exercises'), orderBy('name'));
                 const exSnap = await getDocs(qEx);
                 const exList: Exercise[] = [];
                 exSnap.forEach(doc => exList.push({ id: doc.id, ...doc.data() } as Exercise));
                 setAvailableExercises(exList);
 
                 // 2. Fetch Templates
-                const qTmpl = query(collection(db, 'workout_templates'), orderBy('name'));
+                const qTmpl = query(collection(firestore, 'workout_templates'), orderBy('name'));
                 const tmplSnap = await getDocs(qTmpl);
                 const tmpls: any[] = [];
                 tmplSnap.forEach(doc => tmpls.push({ id: doc.id, ...doc.data() }));
                 setAvailableTemplates(tmpls);
 
                 // 3. Fetch Workout Details
-                const woRef = doc(db, 'workouts', workoutId);
+                const woRef = doc(firestore, 'workouts', workoutId);
                 const woSnap = await getDoc(woRef);
 
                 if (!woSnap.exists()) {
@@ -83,7 +87,7 @@ export default function EditWorkoutPage() {
 
                 // 4. Fetch Logs to Reconstruct State
                 // Fetch ALL logs for this workout to ensure we have complete picture
-                const qLogs = query(collection(db, 'workout_logs'), where('workout_id', '==', workoutId), orderBy('exercise_order'));
+                const qLogs = query(collection(firestore, 'workout_logs'), where('workout_id', '==', workoutId), orderBy('exercise_order'));
                 const logsSnap = await getDocs(qLogs);
                 const logs: any[] = [];
                 logsSnap.forEach(doc => logs.push({ id: doc.id, ...doc.data() }));
@@ -150,9 +154,11 @@ export default function EditWorkoutPage() {
     };
 
     const handleLoadTemplate = async (templateId: string) => {
+        const firestore = db;
+        if (!firestore) return;
         setLoading(true);
         try {
-            const q = query(collection(db, 'workout_template_exercises'), where('template_id', '==', templateId));
+            const q = query(collection(firestore, 'workout_template_exercises'), where('template_id', '==', templateId));
             const itemsSnap = await getDocs(q);
             const items: any[] = [];
             itemsSnap.forEach(doc => items.push(doc.data()));
@@ -178,7 +184,8 @@ export default function EditWorkoutPage() {
     };
 
     const handleSaveTemplate = async () => {
-        if (selectedExercises.length === 0) {
+        const firestore = db;
+        if (selectedExercises.length === 0 || !firestore) {
             alert("No hay ejercicios para guardar en la plantilla.");
             return;
         }
@@ -189,14 +196,14 @@ export default function EditWorkoutPage() {
         setSaving(true);
         try {
             // 1. Create Template
-            const tmplRef = await addDoc(collection(db, 'workout_templates'), {
+            const tmplRef = await addDoc(collection(firestore, 'workout_templates'), {
                 name: templateName,
                 created_at: new Date().toISOString()
             });
 
             // 2. Insert Items (Batch)
-            const batch = writeBatch(db);
-            const itemsRef = collection(db, 'workout_template_exercises');
+            const batch = writeBatch(firestore);
+            const itemsRef = collection(firestore, 'workout_template_exercises');
 
             selectedExercises.forEach(ex => {
                 const newDocRef = doc(itemsRef);
@@ -216,7 +223,7 @@ export default function EditWorkoutPage() {
             alert("Plantilla guardada correctamente!");
 
             // Refresh templates list
-            const qTmpl = query(collection(db, 'workout_templates'), orderBy('name'));
+            const qTmpl = query(collection(firestore, 'workout_templates'), orderBy('name'));
             const tmplSnap = await getDocs(qTmpl);
             const tmpls: any[] = [];
             tmplSnap.forEach(doc => tmpls.push({ id: doc.id, ...doc.data() }));
@@ -231,7 +238,8 @@ export default function EditWorkoutPage() {
     };
 
     const handleUpdateWorkout = async () => {
-        if (!workoutId) return;
+        const firestore = db;
+        if (!workoutId || !firestore) return;
         if (selectedExercises.length === 0) {
             alert("El entrenamiento debe tener al menos un ejercicio.");
             return;
@@ -243,10 +251,10 @@ export default function EditWorkoutPage() {
 
         setSaving(true);
         try {
-            const batch = writeBatch(db);
+            const batch = writeBatch(firestore);
 
             // 1. Update Workout Details
-            const woRef = doc(db, 'workouts', workoutId);
+            const woRef = doc(firestore, 'workouts', workoutId);
             batch.update(woRef, {
                 name: workoutName,
                 date: workoutDate,
@@ -254,7 +262,7 @@ export default function EditWorkoutPage() {
             });
 
             // Fetch current logs again to be sure we have IDs
-            const logsRef = collection(db, 'workout_logs');
+            const logsRef = collection(firestore, 'workout_logs');
             const qLogs = query(logsRef, where('workout_id', '==', workoutId));
             const logsSnap = await getDocs(qLogs);
             const currentLogs: any[] = [];
@@ -266,7 +274,7 @@ export default function EditWorkoutPage() {
 
             currentLogs.forEach(log => {
                 if (toDeleteIds.includes(log.exercise_id)) {
-                    batch.delete(doc(db, 'workout_logs', log.id));
+                    batch.delete(doc(firestore, 'workout_logs', log.id));
                 }
             });
 
@@ -300,7 +308,7 @@ export default function EditWorkoutPage() {
 
                     // 1. Update metadata for ALL logs
                     exLogs.forEach(log => {
-                        batch.update(doc(db, 'workout_logs', log.id), {
+                        batch.update(doc(firestore, 'workout_logs', log.id), {
                             exercise_order: ex.order,
                             target_reps: ex.targetReps,
                             tempo: ex.tempo,
@@ -338,7 +346,7 @@ export default function EditWorkoutPage() {
                         currentLogs
                             .filter(l => l.exercise_id === ex.exerciseId && l.set_number > ex.sets)
                             .forEach(log => {
-                                batch.delete(doc(db, 'workout_logs', log.id));
+                                batch.delete(doc(firestore, 'workout_logs', log.id));
                             });
                     }
 
@@ -372,7 +380,7 @@ export default function EditWorkoutPage() {
             // 4. Handle Decreased Occurrences (Days removed)
             currentLogs.forEach(log => {
                 if (log.day_number > occurrences) {
-                    batch.delete(doc(db, 'workout_logs', log.id));
+                    batch.delete(doc(firestore, 'workout_logs', log.id));
                 }
             });
 

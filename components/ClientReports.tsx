@@ -27,10 +27,15 @@ export function ClientReports({ userId, userName }: ClientReportsProps) {
         if (!userId) return;
 
         const fetchData = async () => {
+            const firestore = db;
+            if (!firestore) {
+                setLoading(false);
+                return;
+            }
             setLoading(true);
             try {
                 const q = query(
-                    collection(db, 'client_measurements'),
+                    collection(firestore, 'client_measurements'),
                     where('user_id', '==', userId),
                     orderBy('recorded_at', 'asc')
                 );

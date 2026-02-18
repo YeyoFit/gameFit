@@ -43,9 +43,14 @@ export default function NewTemplatePage() {
 
     useEffect(() => {
         const fetchExercises = async () => {
+            const firestore = db;
+            if (!firestore) {
+                setLoading(false);
+                return;
+            }
             setLoading(true);
             try {
-                const q = query(collection(db, 'exercises'), orderBy('name'));
+                const q = query(collection(firestore, 'exercises'), orderBy('name'));
                 const querySnapshot = await getDocs(q);
                 const exList: Exercise[] = [];
                 querySnapshot.forEach((doc) => {
@@ -91,11 +96,12 @@ export default function NewTemplatePage() {
     };
 
     const handleSave = async () => {
+        const firestore = db;
         if (!templateName) {
             alert("Please enter a template name.");
             return;
         }
-        if (selectedExercises.length === 0) {
+        if (selectedExercises.length === 0 || !firestore) {
             alert("Please add at least one exercise.");
             return;
         }
@@ -103,16 +109,16 @@ export default function NewTemplatePage() {
         setSaving(true);
         try {
             // 1. Create Template
-            const templateRef = await addDoc(collection(db, 'workout_templates'), {
+            const templateRef = await addDoc(collection(firestore, 'workout_templates'), {
                 name: templateName,
                 description: description,
                 created_at: new Date().toISOString()
             });
 
             // 2. Create Template Items (Batch)
-            const batch = writeBatch(db);
+            const batch = writeBatch(firestore);
             selectedExercises.forEach(ex => {
-                const itemRef = doc(collection(db, 'workout_template_exercises'));
+                const itemRef = doc(collection(firestore, 'workout_template_exercises'));
                 batch.set(itemRef, {
                     template_id: templateRef.id,
                     exercise_id: ex.exerciseId,

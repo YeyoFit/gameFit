@@ -54,9 +54,14 @@ export default function CreateWorkoutPage() {
 
     useEffect(() => {
         const fetchExercises = async () => {
+            const firestore = db;
+            if (!firestore) {
+                setLoading(false);
+                return;
+            }
             setLoading(true);
             try {
-                const q = query(collection(db, 'exercises'), orderBy('name'));
+                const q = query(collection(firestore, 'exercises'), orderBy('name'));
                 const querySnapshot = await getDocs(q);
                 const exList: Exercise[] = [];
                 querySnapshot.forEach((doc) => {
@@ -71,10 +76,12 @@ export default function CreateWorkoutPage() {
         };
 
         const fetchClients = async () => {
+            const firestore = db;
+            if (!firestore) return;
             if (role === 'admin' || role === 'super_admin') {
                 try {
                     // Fetch users from 'users' collection
-                    const q = query(collection(db, 'users'), orderBy('email'));
+                    const q = query(collection(firestore, 'users'), orderBy('email'));
                     const querySnapshot = await getDocs(q);
                     const clientList: Profile[] = [];
                     querySnapshot.forEach((doc) => {
@@ -101,8 +108,10 @@ export default function CreateWorkoutPage() {
         setWorkoutName(`Entrenamiento ${new Date().toLocaleDateString()}`);
 
         const fetchTemplates = async () => {
+            const firestore = db;
+            if (!firestore) return;
             try {
-                const q = query(collection(db, 'workout_templates'), orderBy('name'));
+                const q = query(collection(firestore, 'workout_templates'), orderBy('name'));
                 const querySnapshot = await getDocs(q);
                 const tmpls: any[] = [];
                 querySnapshot.forEach((doc) => {
@@ -141,10 +150,12 @@ export default function CreateWorkoutPage() {
     };
 
     const handleLoadTemplate = async (templateId: string) => {
+        const firestore = db;
+        if (!firestore) return;
         setLoading(true);
         try {
             // Fetch items from 'workout_template_exercises' where template_id == templateId
-            const q = query(collection(db, 'workout_template_exercises'), where('template_id', '==', templateId));
+            const q = query(collection(firestore, 'workout_template_exercises'), where('template_id', '==', templateId));
             const querySnapshot = await getDocs(q);
 
             const items: any[] = [];
@@ -173,25 +184,26 @@ export default function CreateWorkoutPage() {
     };
 
     const handleSaveTemplate = async () => {
-        if (selectedExercises.length === 0) {
+        const firestore = db;
+        if (selectedExercises.length === 0 || !firestore) {
             alert("No hay ejercicios para guardar en la plantilla.");
             return;
         }
-
+        // ... (preserving logic)
         const templateName = prompt("Nombre de la nueva plantilla:");
         if (!templateName) return;
 
         setSaving(true);
         try {
             // 1. Create Template
-            const tmplRef = await addDoc(collection(db, 'workout_templates'), {
+            const tmplRef = await addDoc(collection(firestore, 'workout_templates'), {
                 name: templateName,
                 created_at: new Date().toISOString()
             });
 
             // 2. Insert Items (Batch)
-            const batch = writeBatch(db);
-            const itemsRef = collection(db, 'workout_template_exercises');
+            const batch = writeBatch(firestore);
+            const itemsRef = collection(firestore, 'workout_template_exercises');
 
             selectedExercises.forEach(ex => {
                 const newDocRef = doc(itemsRef); // Generate ID
@@ -211,7 +223,7 @@ export default function CreateWorkoutPage() {
             alert("Plantilla guardada correctamente!");
 
             // Refresh templates list
-            const q = query(collection(db, 'workout_templates'), orderBy('name'));
+            const q = query(collection(firestore, 'workout_templates'), orderBy('name'));
             const querySnapshot = await getDocs(q);
             const newTempls: any[] = [];
             querySnapshot.forEach((doc) => {
@@ -228,7 +240,8 @@ export default function CreateWorkoutPage() {
     };
 
     const handleSaveWorkout = async () => {
-        if (!user) return;
+        const firestore = db;
+        if (!user || !firestore) return;
         if (selectedExercises.length === 0) {
             alert("Por favor añade al menos un ejercicio.");
             return;
@@ -246,7 +259,7 @@ export default function CreateWorkoutPage() {
                 return;
             }
 
-            const workoutRef = await addDoc(collection(db, 'workouts'), {
+            const workoutRef = await addDoc(collection(firestore, 'workouts'), {
                 user_id: targetUserId,
                 name: workoutName,
                 date: workoutDate,
@@ -257,8 +270,8 @@ export default function CreateWorkoutPage() {
 
             // 2. Create Logs (Sets)
             // Use batch for better performance/atomicity
-            const batch = writeBatch(db);
-            const logsRef = collection(db, 'workout_logs');
+            const batch = writeBatch(firestore);
+            const logsRef = collection(firestore, 'workout_logs');
 
             selectedExercises.forEach(ex => {
                 // Loop through occurrences (Days)

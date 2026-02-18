@@ -20,11 +20,12 @@ export default function LoginPage() {
         console.log("Attempting login with:", email);
 
         try {
-            if (!auth) {
+            const firebaseAuth = auth;
+            if (!firebaseAuth) {
                 throw new Error("El servicio de autenticación no está disponible. Verifica la configuración de Firebase.");
             }
             // Firebase Login
-            await signInWithEmailAndPassword(auth, email, password);
+            await signInWithEmailAndPassword(firebaseAuth, email, password);
 
             setMessage({ type: 'success', text: '¡Inicio de sesión exitoso! Redirigiendo...' });
 

@@ -44,13 +44,16 @@ export function ExerciseForm({ initialData }: ExerciseFormProps) {
         };
 
         try {
+            const firestore = db;
+            if (!firestore) throw new Error("Database not initialized");
+
             if (initialData?.id) {
                 // Update
-                const docRef = doc(db, 'exercises', initialData.id);
+                const docRef = doc(firestore, 'exercises', initialData.id);
                 await updateDoc(docRef, payload);
             } else {
                 // Create
-                await addDoc(collection(db, 'exercises'), {
+                await addDoc(collection(firestore, 'exercises'), {
                     ...payload,
                     created_at: new Date().toISOString()
                 });

@@ -63,11 +63,16 @@ export default function WorkoutExecutionPage() {
         if (!workoutId) return;
 
         async function fetchData() {
+            const firestore = db;
+            if (!firestore) {
+                setLoading(false);
+                return;
+            }
             setLoading(true);
 
             try {
                 // 1. Fetch Workout Details from Firestore
-                const workoutRef = doc(db, 'workouts', workoutId);
+                const workoutRef = doc(firestore, 'workouts', workoutId);
                 const workoutSnap = await getDoc(workoutRef);
 
                 if (!workoutSnap.exists()) {
@@ -81,7 +86,7 @@ export default function WorkoutExecutionPage() {
                 setFeedback(woData.coach_feedback || "");
 
                 // 2. Fetch Logs (No Join, so we get IDs)
-                const logsRef = collection(db, 'workout_logs');
+                const logsRef = collection(firestore, 'workout_logs');
                 const qLogs = query(
                     logsRef,
                     where('workout_id', '==', workoutId),
@@ -111,7 +116,7 @@ export default function WorkoutExecutionPage() {
                     }
 
                     for (const chunk of chunks) {
-                        const qEx = query(collection(db, 'exercises'), where(documentId(), 'in', chunk));
+                        const qEx = query(collection(firestore, 'exercises'), where(documentId(), 'in', chunk));
                         const exSnaps = await getDocs(qEx);
                         exSnaps.forEach((doc) => {
                             exercisesMap.set(doc.id, { id: doc.id, ...doc.data() });
@@ -273,12 +278,13 @@ export default function WorkoutExecutionPage() {
     };
 
     const handleSaveWorkout = async () => {
-        if (!workout) return;
+        const firestore = db;
+        if (!workout || !firestore) return;
         setSaving(true);
 
         try {
-            const batch = writeBatch(db);
-            const logsRef = collection(db, 'workout_logs');
+            const batch = writeBatch(firestore);
+            const logsRef = collection(firestore, 'workout_logs');
             const exercisesToSave = dayData[activeDay] || [];
             let updateCount = 0;
 
@@ -320,10 +326,11 @@ export default function WorkoutExecutionPage() {
     };
 
     const handleSaveFeedback = async () => {
-        if (!workout) return;
+        const firestore = db;
+        if (!workout || !firestore) return;
         setSavingFeedback(true);
         try {
-            const workoutRef = doc(db, 'workouts', workout.id);
+            const workoutRef = doc(firestore, 'workouts', workout.id);
             await updateDoc(workoutRef, {
                 coach_feedback: feedback,
                 is_feedback_read: false
@@ -396,6 +403,8 @@ export default function WorkoutExecutionPage() {
                                             type="button"
                                             onClick={async (e) => {
                                                 e.preventDefault();
+                                                const firestore = db;
+                                                if (!firestore) return;
                                                 try {
                                                     setLoading(true);
                                                     // Direct Delete from Client (since we have logic in frontend)
@@ -403,15 +412,15 @@ export default function WorkoutExecutionPage() {
                                                     // TODO: Move to Cloud Function for security if needed later.
 
                                                     // Delete logs first (optional if we don't care about orphans, but good practice)
-                                                    const logsRef = collection(db, 'workout_logs');
+                                                    const logsRef = collection(firestore, 'workout_logs');
                                                     const q = query(logsRef, where('workout_id', '==', workout.id));
                                                     const logsSnap = await getDocs(q);
-                                                    const batch = writeBatch(db);
+                                                    const batch = writeBatch(firestore);
                                                     logsSnap.forEach(doc => {
                                                         batch.delete(doc.ref);
                                                     });
                                                     // Delete workout
-                                                    const woRef = doc(db, 'workouts', workout.id);
+                                                    const woRef = doc(firestore, 'workouts', workout.id);
                                                     batch.delete(woRef);
 
                                                     await batch.commit();

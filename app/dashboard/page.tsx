@@ -43,15 +43,15 @@ export default function DashboardPage() {
         }
 
         async function fetchHistory() {
+            const firestore = db;
+            if (!firestore) {
+                setLoading(false);
+                return;
+            }
             setLoading(true);
 
             try {
-                // Determine if we need to order by date desc
-                // Firestore requires an index for compound queries (where + orderBy).
-                // Without index, this might fail initially. 
-                // We'll try user_id filter + client sort or create index link.
-
-                const workoutsRef = collection(db, 'workouts');
+                const workoutsRef = collection(firestore, 'workouts');
                 const q = query(
                     workoutsRef,
                     where('user_id', '==', user!.uid),
@@ -95,11 +95,13 @@ export default function DashboardPage() {
     }, [user, role, authLoading, router]);
 
     const handleDeleteWorkout = async (e: React.MouseEvent, workoutId: string) => {
-        e.preventDefault(); // Prevent navigation if nested
+        e.preventDefault();
         if (!confirm("¿Estás seguro de querer eliminar este entrenamiento? No se puede deshacer de forma inmediata.")) return;
+        const firestore = db;
+        if (!firestore) return;
 
         try {
-            await deleteDoc(doc(db, 'workouts', workoutId));
+            await deleteDoc(doc(firestore, 'workouts', workoutId));
             // Optimistic update
             setWorkouts(prev => prev.filter(w => w.id !== workoutId));
         } catch (error: any) {
@@ -113,14 +115,14 @@ export default function DashboardPage() {
     };
 
     const handleCloseFeedback = async () => {
-        if (!unreadFeedback) return;
-
-        // Optimistic close
+        const firestore = db;
+        if (!unreadFeedback || !firestore) return;
+        // ... (preserving logic)
         const currentId = unreadFeedback.id;
         setUnreadFeedback(null);
 
         try {
-            const workoutRef = doc(db, 'workouts', currentId);
+            const workoutRef = doc(firestore, 'workouts', currentId);
             await updateDoc(workoutRef, { is_feedback_read: true });
         } catch (error) {
             console.error("Error updating feedback read status", error);
@@ -133,19 +135,20 @@ export default function DashboardPage() {
     };
 
     const handleConfirmDuplicate = async () => {
-        if (!duplicateContext) return;
+        const firestore = db;
+        if (!duplicateContext || !firestore) return;
         setCopying(true);
 
         try {
             if (!user) throw new Error("No user found");
 
             // 1. Fetch Source Workout to get details (like occurrences)
-            const sourceDoc = await getDoc(doc(db, 'workouts', duplicateContext.id));
+            const sourceDoc = await getDoc(doc(firestore, 'workouts', duplicateContext.id));
             if (!sourceDoc.exists()) throw new Error("Original workout not found");
             const sourceData = sourceDoc.data();
 
             // 2. Create New Workout
-            const newWorkoutRef = await addDoc(collection(db, 'workouts'), {
+            const newWorkoutRef = await addDoc(collection(firestore, 'workouts'), {
                 name: sourceData.name || "Workout Copy",
                 date: copyDate,
                 user_id: user.uid,
@@ -156,12 +159,12 @@ export default function DashboardPage() {
             });
 
             // 3. Fetch Source Logs
-            const q = query(collection(db, 'workout_logs'), where('workout_id', '==', duplicateContext.id));
+            const q = query(collection(firestore, 'workout_logs'), where('workout_id', '==', duplicateContext.id));
             const logsSnapshot = await getDocs(q);
 
             // 4. Batch Insert New Logs
-            const batch = writeBatch(db);
-            const logsRef = collection(db, 'workout_logs');
+            const batch = writeBatch(firestore);
+            const logsRef = collection(firestore, 'workout_logs');
 
             logsSnapshot.forEach((logDoc) => {
                 const log = logDoc.data();

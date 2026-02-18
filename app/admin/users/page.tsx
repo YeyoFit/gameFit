@@ -41,13 +41,14 @@ export default function UsersPage() {
     }, [authLoading]);
 
     const fetchUsers = async () => {
-        if (!db) {
+        const firestore = db;
+        if (!firestore) {
             setLoading(false);
             return;
         }
         setLoading(true);
         try {
-            const q = query(collection(db, 'users'), orderBy('role'));
+            const q = query(collection(firestore, 'users'), orderBy('role'));
             const querySnapshot = await getDocs(q);
             const usersList: Profile[] = [];
             querySnapshot.forEach((doc) => {
@@ -92,10 +93,11 @@ export default function UsersPage() {
         setFormMessage("");
 
         try {
+            const firestore = db;
             if (editingUser) {
                 // UPDATE FLOW (Database update only for Role for now)
-                if (!db) return;
-                const userRef = doc(db, 'users', editingUser.id);
+                if (!firestore) return;
+                const userRef = doc(firestore, 'users', editingUser.id);
                 await updateDoc(userRef, { role: newUserRole });
 
                 setFormStatus('success');
@@ -130,8 +132,8 @@ export default function UsersPage() {
 
                     // 4. Create User Document in Firestore (using PRIMARY admin auth)
                     // We can write to 'users' collection because we are Admin
-                    if (!db) return;
-                    await setDoc(doc(db, 'users', newUid), {
+                    if (!firestore) return;
+                    await setDoc(doc(firestore, 'users', newUid), {
                         email: newUserEmail,
                         role: newUserRole,
                         created_at: new Date().toISOString()
@@ -168,8 +170,9 @@ export default function UsersPage() {
             // But we can delete the 'users' document, which effectively hides them and removes their role.
 
             // 1. Delete user document from Firestore
-            if (!db) throw new Error("Database not initialized");
-            await deleteDoc(doc(db, 'users', userId));
+            const firestore = db;
+            if (!firestore) throw new Error("Database not initialized");
+            await deleteDoc(doc(firestore, 'users', userId));
 
             // Optional: We could call the API if it was working, but we know it's not migrated.
             // For now, this is a "Ban" effectively.

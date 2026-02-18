@@ -39,10 +39,15 @@ export default function ProgressPhotosPage() {
     }, [user, authLoading]);
 
     const fetchPhotos = async () => {
+        const firestore = db;
+        if (!firestore) {
+            setLoading(false);
+            return;
+        }
         setLoading(true);
         try {
             const q = query(
-                collection(db, 'client_photos'),
+                collection(firestore, 'client_photos'),
                 where('user_id', '==', user!.uid),
                 orderBy('date', 'desc')
             );
@@ -61,10 +66,12 @@ export default function ProgressPhotosPage() {
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
+        const firestore = db;
+        if (!firestore || !user) return;
         setSaving(true);
 
         try {
-            await addDoc(collection(db, 'client_photos'), {
+            await addDoc(collection(firestore, 'client_photos'), {
                 user_id: user!.uid,
                 date,
                 front_url: frontUrl,
@@ -86,9 +93,11 @@ export default function ProgressPhotosPage() {
     };
 
     const handleDelete = async (id: string) => {
+        const firestore = db;
+        if (!firestore) return;
         if (!confirm("Delete this entry?")) return;
         try {
-            await deleteDoc(doc(db, 'client_photos', id));
+            await deleteDoc(doc(firestore, 'client_photos', id));
             setEntries(prev => prev.filter(e => e.id !== id));
         } catch (error: any) {
             alert(error.message);

@@ -43,18 +43,23 @@ export default function UserMeasurementsPage() {
     }, [userId]);
 
     const fetchData = async () => {
+        const firestore = db;
+        if (!firestore) {
+            setLoading(false);
+            return;
+        }
         setLoading(true);
 
         try {
             // 1. Fetch User Info (for header)
-            const userDoc = await getDoc(doc(db, 'users', userId));
+            const userDoc = await getDoc(doc(firestore, 'users', userId));
             if (userDoc.exists()) {
                 setUserProfile(userDoc.data() as UserProfile);
             }
 
             // 2. Fetch Measurements
             const q = query(
-                collection(db, 'client_measurements'),
+                collection(firestore, 'client_measurements'),
                 where('user_id', '==', userId),
                 orderBy('recorded_at', 'desc')
             );
@@ -72,11 +77,13 @@ export default function UserMeasurementsPage() {
     };
 
     const handleAddMeasurement = async (e: React.FormEvent) => {
+        const firestore = db;
+        if (!firestore) return;
         e.preventDefault();
         setIsSubmitting(true);
 
         try {
-            await addDoc(collection(db, 'client_measurements'), {
+            await addDoc(collection(firestore, 'client_measurements'), {
                 user_id: userId,
                 recorded_at: date,
                 weight: parseFloat(weight),
@@ -98,9 +105,11 @@ export default function UserMeasurementsPage() {
     };
 
     const handleDelete = async (id: string) => {
+        const firestore = db;
         if (!confirm("Are you sure?")) return;
+        if (!firestore) return;
         try {
-            await deleteDoc(doc(db, 'client_measurements', id));
+            await deleteDoc(doc(firestore, 'client_measurements', id));
             fetchData();
         } catch (error: any) {
             alert(error.message);
