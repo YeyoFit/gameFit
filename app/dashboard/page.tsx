@@ -54,8 +54,7 @@ export default function DashboardPage() {
                 const workoutsRef = collection(firestore, 'workouts');
                 const q = query(
                     workoutsRef,
-                    where('user_id', '==', user!.uid),
-                    orderBy('date', 'desc')
+                    where('user_id', '==', user!.uid)
                 );
 
                 const querySnapshot = await getDocs(q);
@@ -74,6 +73,8 @@ export default function DashboardPage() {
                     });
                 });
 
+                // Sort in memory to avoid index requirements
+                fetchedWorkouts.sort((a, b) => b.date.localeCompare(a.date));
                 setWorkouts(fetchedWorkouts);
 
                 // Check for unread feedback

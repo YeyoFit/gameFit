@@ -54,8 +54,7 @@ export default function ClientDashboardPage() {
             // 2. Fetch Workouts
             const qWorkouts = query(
                 collection(firestore, 'workouts'),
-                where('user_id', '==', userId),
-                orderBy('date', 'desc')
+                where('user_id', '==', userId)
             );
             const wSnap = await getDocs(qWorkouts);
             const wData: DbWorkout[] = [];
@@ -68,6 +67,8 @@ export default function ClientDashboardPage() {
                     created_at: data.created_at
                 });
             });
+            // Sort in memory to avoid needing composite index for user_id + date
+            wData.sort((a, b) => b.date.localeCompare(a.date));
             setWorkouts(wData);
         } catch (error) {
             console.error("Error fetching data:", error);

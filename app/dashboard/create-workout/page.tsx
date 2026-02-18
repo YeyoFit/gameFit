@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, addDoc, query, where, orderBy, doc, getDoc, writeBatch } from "firebase/firestore";
 import { ArrowLeft, Plus, Save, Trash2, Dumbbell, GripVertical, Download, Check } from "lucide-react";
@@ -31,8 +31,18 @@ type WorkoutExerciseConfig = {
 };
 
 export default function CreateWorkoutPage() {
+    return (
+        <Suspense fallback={<div>Cargando...</div>}>
+            <CreateWorkoutContent />
+        </Suspense>
+    );
+}
+
+function CreateWorkoutContent() {
     const { user, role } = useAuth();
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const urlUserId = searchParams.get('userId');
 
     const [workoutName, setWorkoutName] = useState("");
     const [workoutDate, setWorkoutDate] = useState(new Date().toISOString().split('T')[0]);
@@ -40,7 +50,7 @@ export default function CreateWorkoutPage() {
 
     // Client Selection (Admin only)
     const [clients, setClients] = useState<Profile[]>([]);
-    const [selectedClientId, setSelectedClientId] = useState<string>("");
+    const [selectedClientId, setSelectedClientId] = useState<string>(urlUserId || "");
 
     const [availableExercises, setAvailableExercises] = useState<Exercise[]>([]);
     const [selectedExercises, setSelectedExercises] = useState<WorkoutExerciseConfig[]>([]);
@@ -91,7 +101,7 @@ export default function CreateWorkoutPage() {
                     setClients(clientList);
 
                     // Default to self if in list, or just empty
-                    if (user && !selectedClientId) setSelectedClientId(user.uid);
+                    if (!selectedClientId && user) setSelectedClientId(user.uid);
                 } catch (error) {
                     console.error("Error fetching clients:", error);
                 }

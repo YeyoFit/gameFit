@@ -85,12 +85,11 @@ export default function WorkoutExecutionPage() {
                 setWorkout(woData);
                 setFeedback(woData.coach_feedback || "");
 
-                // 2. Fetch Logs (No Join, so we get IDs)
+                // 2. Fetch Logs
                 const logsRef = collection(firestore, 'workout_logs');
                 const qLogs = query(
                     logsRef,
-                    where('workout_id', '==', workoutId),
-                    orderBy('set_number', 'asc') // Might need index: workout_id ASC, set_number ASC
+                    where('workout_id', '==', workoutId)
                 );
 
                 const logsSnapshot = await getDocs(qLogs);
@@ -102,6 +101,9 @@ export default function WorkoutExecutionPage() {
                     logsData.push({ id: doc.id, ...data });
                     if (data.exercise_id) uniqueExerciseIds.add(data.exercise_id);
                 });
+
+                // Sort logs by set_number in memory
+                logsData.sort((a, b) => (a.set_number || 0) - (b.set_number || 0));
 
                 // 3. Fetch Exercise Details (Manual Join)
                 const exercisesMap = new Map<string, any>();
