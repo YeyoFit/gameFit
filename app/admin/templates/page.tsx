@@ -22,12 +22,13 @@ export default function TemplatesPage() {
         }
         setLoading(true);
         try {
-            const q = query(collection(firestore, 'workout_templates'), orderBy('name'));
+            const q = query(collection(firestore, 'workout_templates'));
             const querySnapshot = await getDocs(q);
             const tmplList: any[] = [];
             querySnapshot.forEach((doc) => {
                 tmplList.push({ id: doc.id, ...doc.data() });
             });
+            tmplList.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
             setTemplates(tmplList);
         } catch (error) {
             console.error("Error loading templates:", error);

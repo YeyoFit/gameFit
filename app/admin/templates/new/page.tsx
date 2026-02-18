@@ -50,12 +50,13 @@ export default function NewTemplatePage() {
             }
             setLoading(true);
             try {
-                const q = query(collection(firestore, 'exercises'), orderBy('name'));
+                const q = query(collection(firestore, 'exercises'));
                 const querySnapshot = await getDocs(q);
                 const exList: Exercise[] = [];
                 querySnapshot.forEach((doc) => {
                     exList.push({ id: doc.id, ...doc.data() } as Exercise);
                 });
+                exList.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
                 setAvailableExercises(exList);
             } catch (error) {
                 console.error(error);

@@ -57,17 +57,21 @@ export default function EditWorkoutPage() {
 
             try {
                 // 1. Fetch Exercises (Reference)
-                const qEx = query(collection(firestore, 'exercises'), orderBy('name'));
+                const qEx = query(collection(firestore, 'exercises'));
                 const exSnap = await getDocs(qEx);
                 const exList: Exercise[] = [];
                 exSnap.forEach(doc => exList.push({ id: doc.id, ...doc.data() } as Exercise));
+                // Sort in memory
+                exList.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
                 setAvailableExercises(exList);
 
                 // 2. Fetch Templates
-                const qTmpl = query(collection(firestore, 'workout_templates'), orderBy('name'));
+                const qTmpl = query(collection(firestore, 'workout_templates'));
                 const tmplSnap = await getDocs(qTmpl);
                 const tmpls: any[] = [];
                 tmplSnap.forEach(doc => tmpls.push({ id: doc.id, ...doc.data() }));
+                // Sort in memory
+                tmpls.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
                 setAvailableTemplates(tmpls);
 
                 // 3. Fetch Workout Details
@@ -87,10 +91,13 @@ export default function EditWorkoutPage() {
 
                 // 4. Fetch Logs to Reconstruct State
                 // Fetch ALL logs for this workout to ensure we have complete picture
-                const qLogs = query(collection(firestore, 'workout_logs'), where('workout_id', '==', workoutId), orderBy('exercise_order'));
+                const qLogs = query(collection(firestore, 'workout_logs'), where('workout_id', '==', workoutId));
                 const logsSnap = await getDocs(qLogs);
                 const logs: any[] = [];
                 logsSnap.forEach(doc => logs.push({ id: doc.id, ...doc.data() }));
+
+                // Sort logs by exercise_order in memory
+                logs.sort((a, b) => (a.exercise_order || "A").localeCompare(b.exercise_order || "A", undefined, { numeric: true }));
 
                 if (logs.length > 0) {
                     // Filter for Day 1 to build the "Plan"
@@ -223,10 +230,11 @@ export default function EditWorkoutPage() {
             alert("Plantilla guardada correctamente!");
 
             // Refresh templates list
-            const qTmpl = query(collection(firestore, 'workout_templates'), orderBy('name'));
+            const qTmpl = query(collection(firestore, 'workout_templates'));
             const tmplSnap = await getDocs(qTmpl);
             const tmpls: any[] = [];
             tmplSnap.forEach(doc => tmpls.push({ id: doc.id, ...doc.data() }));
+            tmpls.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
             setAvailableTemplates(tmpls);
 
         } catch (err: any) {
