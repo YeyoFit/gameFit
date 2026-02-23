@@ -57,9 +57,22 @@ export default function ExercisesPage() {
             const batch = writeBatch(firestore);
             const exercisesRef = collection(firestore, 'exercises');
 
-            // Firestore batches are limited to 500 operations
-            // We have ~350, so one batch is fine.
-            SCRAPED_EXERCISES.forEach((ex) => {
+            // Deduplicate: Only add exercises that don't exist by name
+            const existingNames = new Set(exercises.map(ex => ex.name.toLowerCase()));
+            const newExercises = SCRAPED_EXERCISES.filter(ex => !existingNames.has(ex.name.toLowerCase()));
+
+            if (newExercises.length === 0) {
+                alert("¡Todos los ejercicios ya están en la biblioteca!");
+                setSeeding(false);
+                return;
+            }
+
+            if (!confirm(`Se añadirán ${newExercises.length} ejercicios nuevos. ¿Continuar?`)) {
+                setSeeding(false);
+                return;
+            }
+
+            newExercises.forEach((ex) => {
                 const newDocRef = doc(exercisesRef);
                 batch.set(newDocRef, {
                     name: ex.name,
@@ -114,16 +127,14 @@ export default function ExercisesPage() {
                     <p className="text-gray-500">Gestionar ejercicios y videos disponibles.</p>
                 </div>
                 <div className="flex gap-2">
-                    {exercises.length === 0 && !loading && (
-                        <button
-                            onClick={handleSeed}
-                            disabled={seeding}
-                            className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded shadow flex items-center justify-center transition-colors"
-                        >
-                            {seeding ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Database className="w-5 h-5 mr-2" />}
-                            Sembrar Biblioteca
-                        </button>
-                    )}
+                    <button
+                        onClick={handleSeed}
+                        disabled={seeding}
+                        className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded shadow flex items-center justify-center transition-colors"
+                    >
+                        {seeding ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Database className="w-5 h-5 mr-2" />}
+                        {exercises.length === 0 ? "Sembrar Biblioteca" : "Actualizar Ejercicios"}
+                    </button>
                     <Link
                         href="/admin/exercises/new"
                         className="bg-primary hover:bg-blue-900 text-white font-bold py-2 px-4 rounded shadow flex items-center justify-center"

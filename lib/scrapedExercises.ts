@@ -353,5 +353,25 @@ export const SCRAPED_EXERCISES = [
         "name": "Chin-Up Regular Std Bar Supinated Mid Grip",
         "phase": "Int 6-2 + Back Off - SJ + Chest & Back",
         "bodyPart": "back"
-    }
+    },
+    // FOOTBALL SPECIALIZED EXERCISES
+    { "name": "Trap Bar Deadlift (Explosive)", "phase": "Football - Fundamental", "bodyPart": "football" },
+    { "name": "Power Clean from Floor", "phase": "Football - Fundamental", "bodyPart": "football" },
+    { "name": "Hang Power Clean", "phase": "Football - Fundamental", "bodyPart": "football" },
+    { "name": "Sled Push (Heavy Drive)", "phase": "Football - Lineman", "bodyPart": "football" },
+    { "name": "Sled Pull (Power Walk)", "phase": "Football - Lineman", "bodyPart": "football" },
+    { "name": "Medicine Ball Chest Pass Slam", "phase": "Football - Lineman", "bodyPart": "football" },
+    { "name": "Farmer's Walk (Max Distance)", "phase": "Football - Lineman", "bodyPart": "football" },
+    { "name": "Bulgarian Split Squat (Explosive)", "phase": "Football - Skill", "bodyPart": "football" },
+    { "name": "Box Jump (Max Height)", "phase": "Football - Skill", "bodyPart": "football" },
+    { "name": "Depth Jump to Sprint", "phase": "Football - Skill", "bodyPart": "football" },
+    { "name": "Resisted Sprint (Banded)", "phase": "Football - Skill", "bodyPart": "football" },
+    { "name": "Lateral Barbell Lunge", "phase": "Football - Skill", "bodyPart": "football" },
+    { "name": "Medicine Ball Rotational Throw", "phase": "Football - QB", "bodyPart": "football" },
+    { "name": "Low Cable Woodchop (Explosive)", "phase": "Football - QB", "bodyPart": "football" },
+    { "name": "Band Face Pull with External Rotation", "phase": "Football - QB", "bodyPart": "football" },
+    { "name": "Pistol Squat (Box Supported)", "phase": "Football - QB", "bodyPart": "football" },
+    { "name": "3-Cone Drill", "phase": "Football - Agility", "bodyPart": "football" },
+    { "name": "Pro-Agility Shuttle (5-10-5)", "phase": "Football - Agility", "bodyPart": "football" },
+    { "name": "Agility Ladder (Ickey Shuffle)", "phase": "Football - Agility", "bodyPart": "football" }
 ];
