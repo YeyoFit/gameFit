@@ -373,5 +373,23 @@ export const SCRAPED_EXERCISES = [
     { "name": "Pistol Squat (Box Supported)", "phase": "Football - QB", "bodyPart": "football" },
     { "name": "3-Cone Drill", "phase": "Football - Agility", "bodyPart": "football" },
     { "name": "Pro-Agility Shuttle (5-10-5)", "phase": "Football - Agility", "bodyPart": "football" },
-    { "name": "Agility Ladder (Ickey Shuffle)", "phase": "Football - Agility", "bodyPart": "football" }
+    { "name": "Agility Ladder (Ickey Shuffle)", "phase": "Football - Agility", "bodyPart": "football" },
+    // BASKETBALL SPECIALIZED EXERCISES - GYM
+    { "name": "Bulgarian Split Squat (Jump Focus)", "phase": "Basketball - Gym", "bodyPart": "basketball" },
+    { "name": "Trap Bar Jump Squat (Light)", "phase": "Basketball - Gym", "bodyPart": "basketball" },
+    { "name": "Hang High Pull (Explosive)", "phase": "Basketball - Gym", "bodyPart": "basketball" },
+    { "name": "Kettlebell Swing (Heavy Hip Drive)", "phase": "Basketball - Gym", "bodyPart": "basketball" },
+    { "name": "Nordic Hamstring Curl", "phase": "Basketball - Gym", "bodyPart": "basketball" },
+    { "name": "Medicine Ball Overhead Slam", "phase": "Basketball - Gym", "bodyPart": "basketball" },
+    // BASKETBALL SPECIALIZED EXERCISES - COURT (PISTA)
+    { "name": "Lane Agility Drill (NBA)", "phase": "Basketball - Pista", "bodyPart": "basketball" },
+    { "name": "Rim Jumps (Repeated)", "phase": "Basketball - Pista", "bodyPart": "basketball" },
+    { "name": "Figure-Eight Dribbling (cones)", "phase": "Basketball - Pista", "bodyPart": "basketball" },
+    { "name": "Mikan Drill (Finishing)", "phase": "Basketball - Pista", "bodyPart": "basketball" },
+    { "name": "Zig-Zag Reverse Pivot Drill", "phase": "Basketball - Pista", "bodyPart": "basketball" },
+    { "name": "Pro-Agility Shuttle (5-10-5)", "phase": "Basketball - Pista", "bodyPart": "basketball" },
+    { "name": "Suicides (Court Sprints)", "phase": "Basketball - Pista", "bodyPart": "basketball" },
+    { "name": "Three-Point Spot-up Shooting", "phase": "Basketball - Pista", "bodyPart": "basketball" },
+    { "name": "Post Move Circuit (Drop Steps/Hooks)", "phase": "Basketball - Pista", "bodyPart": "basketball" },
+    { "name": "Defensive Slide Drill (Lane to Lane)", "phase": "Basketball - Pista", "bodyPart": "basketball" }
 ];

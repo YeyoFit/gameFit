@@ -33,12 +33,14 @@ export default function ExercisesPage() {
         }
         setLoading(true);
         try {
-            const q = query(collection(firestore, 'exercises'), orderBy('name'));
+            const q = query(collection(firestore, 'exercises'));
             const querySnapshot = await getDocs(q);
             const exList: Exercise[] = [];
             querySnapshot.forEach((doc) => {
                 exList.push({ id: doc.id, ...doc.data() } as Exercise);
             });
+            // Sort in memory to avoid needing index
+            exList.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
             setExercises(exList);
         } catch (error) {
             console.error("Error loading exercises:", error);
