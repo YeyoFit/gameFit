@@ -129,24 +129,25 @@ export function ExerciseCard({ exercise, onLogChange, isCoach = false }: Exercis
 
                     {/* Input Log */}
                     <div>
-                        <div className="grid gap-2 mb-2" style={{ gridTemplateColumns: '30px 1fr 1fr 50px 40px' }}>
+                        <div className="grid gap-2 mb-2" style={{ gridTemplateColumns: '30px 1fr 1fr 1fr 50px 40px' }}>
                             <div className="font-bold text-gray-500 text-center text-xs">#</div>
-                            <div className="font-bold text-primary text-center text-sm">Weight</div>
-                            <div className="font-bold text-primary text-center text-sm">Reps</div>
-                            <div className="font-bold text-primary text-center text-sm">✓</div>
+                            <div className="font-bold text-primary text-center text-xs uppercase">Weight</div>
+                            <div className="font-bold text-primary text-center text-xs uppercase">Reps</div>
+                            <div className="font-bold text-gray-400 text-center text-xs uppercase">1RM</div>
+                            <div className="font-bold text-primary text-center text-xs uppercase">✓</div>
                             <div className="font-bold text-primary text-center text-xs">🎥</div>
                         </div>
 
                         {logs.map((log, idx) => (
                             <div key={idx} className="mb-2">
-                                <div className={`grid gap-2 mb-2 items-center transition-colors ${log.completed ? 'opacity-50' : ''}`} style={{ gridTemplateColumns: '30px 1fr 1fr 50px 40px' }}>
-                                    <div className="font-bold text-gray-400 text-sm text-center">{idx + 1}</div>
+                                <div className={`grid gap-2 mb-2 items-center transition-colors ${log.completed ? 'opacity-50' : ''}`} style={{ gridTemplateColumns: '30px 1fr 1fr 1fr 50px 40px' }}>
+                                    <div className="font-bold text-gray-400 text-xs text-center">{idx + 1}</div>
                                     <div className="relative w-full">
                                         <input
                                             type="number"
                                             value={log.weight ?? ''}
                                             onChange={(e) => handleInputChange(idx, 'weight', e.target.value)}
-                                            className={`w-full min-w-0 border p-2 text-center text-primary font-bold rounded-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none ${log.completed ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-300'
+                                            className={`w-full min-w-0 border p-1.5 text-center text-primary font-bold text-sm rounded-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none ${log.completed ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-300'
                                                 } ${log.isPR ? 'border-yellow-400 ring-2 ring-yellow-400 bg-yellow-50' : ''}`} // Highlight PR
                                             placeholder={log.prevWeight ? String(log.prevWeight) : "0"}
                                         />
@@ -160,10 +161,13 @@ export function ExerciseCard({ exercise, onLogChange, isCoach = false }: Exercis
                                         type="number"
                                         value={log.reps ?? ''}
                                         onChange={(e) => handleInputChange(idx, 'reps', e.target.value)}
-                                        className={`w-full min-w-0 border p-2 text-center text-primary font-bold rounded-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none ${log.completed ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-300'
+                                        className={`w-full min-w-0 border p-1.5 text-center text-primary font-bold text-sm rounded-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none ${log.completed ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-300'
                                             }`}
                                         placeholder={log.prevReps ? String(log.prevReps) : "0"}
                                     />
+                                    <div className="bg-gray-100 border border-gray-200 rounded-sm p-1.5 text-center text-[10px] font-bold text-gray-500 flex items-center justify-center">
+                                        {log.weight && log.reps ? (log.weight / (1.0278 - 0.0278 * log.reps)).toFixed(1) : '-'}
+                                    </div>
                                     <div className="flex justify-center">
                                         <input
                                             type="checkbox"
