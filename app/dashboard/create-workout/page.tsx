@@ -28,6 +28,7 @@ type WorkoutExerciseConfig = {
     targetReps: string;
     tempo: string;
     rest: string; // e.g. "90s"
+    notes: string;
 };
 
 export default function CreateWorkoutPage() {
@@ -143,7 +144,8 @@ function CreateWorkoutContent() {
             sets: 3,
             targetReps: "8-12",
             tempo: "3010",
-            rest: "60s"
+            rest: "60s",
+            notes: ""
         };
         setSelectedExercises([...selectedExercises, newEx]);
         setIsExerciseModalOpen(false);
@@ -181,7 +183,8 @@ function CreateWorkoutContent() {
                     sets: item.target_sets,
                     targetReps: item.target_reps,
                     tempo: item.tempo || "3010",
-                    rest: item.rest_time ? String(item.rest_time) : "60"
+                    rest: item.rest_time ? String(item.rest_time) : "60",
+                    notes: item.notes || ""
                 }));
                 setSelectedExercises([...selectedExercises, ...mapped]);
             }
@@ -224,7 +227,8 @@ function CreateWorkoutContent() {
                     target_sets: ex.sets,
                     target_reps: ex.targetReps,
                     tempo: ex.tempo,
-                    rest_time: ex.rest
+                    rest_time: ex.rest,
+                    notes: ex.notes
                 });
             });
 
@@ -297,6 +301,7 @@ function CreateWorkoutContent() {
                             target_reps: ex.targetReps,
                             tempo: ex.tempo,
                             rest_time: ex.rest,
+                            notes: ex.notes,
                             weight: null,
                             reps: null,
                             completed: false,
@@ -486,6 +491,16 @@ function CreateWorkoutContent() {
                                                 placeholder="60s"
                                             />
                                         </div>
+                                        <div className="col-span-full">
+                                            <label className="block text-gray-500 text-xs uppercase font-bold mb-1">Notas / Prescripción</label>
+                                            <textarea
+                                                value={ex.notes}
+                                                onChange={(e) => updateExercise(ex.tempId, 'notes', e.target.value)}
+                                                className="w-full border rounded p-2 text-sm bg-yellow-50 focus:bg-white transition-colors"
+                                                placeholder="Notas específicas para este ejercicio..."
+                                                rows={2}
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             );
@@ -503,77 +518,81 @@ function CreateWorkoutContent() {
             </div>
 
             {/* Exercise Selector Modal */}
-            {isExerciseModalOpen && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
-                        <div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-xl">
-                            <h3 className="font-bold text-lg">Seleccionar Ejercicio</h3>
-                            <button onClick={() => setIsExerciseModalOpen(false)} className="text-gray-500 hover:text-black text-2xl font-light">&times;</button>
-                        </div>
-                        <div className="p-4 overflow-y-auto flex-1 space-y-4">
-                            {loading ? <p className="text-center py-10">Cargando...</p> : (
-                                // Group by Body Part
-                                Object.entries(
-                                    availableExercises.reduce((acc, ex) => {
-                                        const part = ex.body_part || 'Other';
-                                        if (!acc[part]) acc[part] = [];
-                                        acc[part].push(ex);
-                                        return acc;
-                                    }, {} as Record<string, typeof availableExercises>)
-                                ).sort((a, b) => a[0].localeCompare(b[0])).map(([part, exercises]) => (
-                                    <div key={part}>
-                                        <h4 className="font-bold text-gray-800 bg-gray-100 px-3 py-1 rounded text-sm mb-2 sticky top-0">{part}</h4>
-                                        <div className="space-y-2">
-                                            {exercises.map(ex => (
-                                                <button
-                                                    key={ex.id}
-                                                    onClick={() => addExercise(ex)}
-                                                    className="w-full text-left p-3 hover:bg-blue-50 border border-transparent hover:border-blue-100 rounded flex items-center group"
-                                                >
-                                                    <div className="bg-white p-2 rounded-full mr-3 text-gray-400 group-hover:bg-blue-200 group-hover:text-blue-700 border border-gray-100 shadow-sm">
-                                                        <Dumbbell className="w-4 h-4" />
-                                                    </div>
-                                                    <div>
-                                                        <div className="font-bold text-gray-700 group-hover:text-primary">{ex.name}</div>
-                                                    </div>
-                                                </button>
-                                            ))}
+            {
+                isExerciseModalOpen && (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
+                            <div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-xl">
+                                <h3 className="font-bold text-lg">Seleccionar Ejercicio</h3>
+                                <button onClick={() => setIsExerciseModalOpen(false)} className="text-gray-500 hover:text-black text-2xl font-light">&times;</button>
+                            </div>
+                            <div className="p-4 overflow-y-auto flex-1 space-y-4">
+                                {loading ? <p className="text-center py-10">Cargando...</p> : (
+                                    // Group by Body Part
+                                    Object.entries(
+                                        availableExercises.reduce((acc, ex) => {
+                                            const part = ex.body_part || 'Other';
+                                            if (!acc[part]) acc[part] = [];
+                                            acc[part].push(ex);
+                                            return acc;
+                                        }, {} as Record<string, typeof availableExercises>)
+                                    ).sort((a, b) => a[0].localeCompare(b[0])).map(([part, exercises]) => (
+                                        <div key={part}>
+                                            <h4 className="font-bold text-gray-800 bg-gray-100 px-3 py-1 rounded text-sm mb-2 sticky top-0">{part}</h4>
+                                            <div className="space-y-2">
+                                                {exercises.map(ex => (
+                                                    <button
+                                                        key={ex.id}
+                                                        onClick={() => addExercise(ex)}
+                                                        className="w-full text-left p-3 hover:bg-blue-50 border border-transparent hover:border-blue-100 rounded flex items-center group"
+                                                    >
+                                                        <div className="bg-white p-2 rounded-full mr-3 text-gray-400 group-hover:bg-blue-200 group-hover:text-blue-700 border border-gray-100 shadow-sm">
+                                                            <Dumbbell className="w-4 h-4" />
+                                                        </div>
+                                                        <div>
+                                                            <div className="font-bold text-gray-700 group-hover:text-primary">{ex.name}</div>
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))
-                            )}
+                                    ))
+                                )}
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Template Selector Modal */}
-            {isTemplateModalOpen && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[80vh] flex flex-col">
-                        <div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-xl">
-                            <h3 className="font-bold text-lg">Cargar Plantilla</h3>
-                            <button onClick={() => setIsTemplateModalOpen(false)} className="text-gray-500 hover:text-black text-2xl font-light">&times;</button>
-                        </div>
-                        <div className="p-4 overflow-y-auto flex-1 space-y-2">
-                            {availableTemplates.length === 0 ? (
-                                <p className="text-center text-gray-500">No se encontraron plantillas.</p>
-                            ) : (
-                                availableTemplates.map(t => (
-                                    <button
-                                        key={t.id}
-                                        onClick={() => handleLoadTemplate(t.id)}
-                                        className="w-full text-left p-4 hover:bg-purple-50 border border-gray-200 hover:border-purple-200 rounded-lg group transition-colors"
-                                    >
-                                        <div className="font-bold text-gray-800 group-hover:text-purple-700">{t.name}</div>
-                                        <div className="text-xs text-gray-500">{t.description || "Sin descripción"}</div>
-                                    </button>
-                                ))
-                            )}
+            {
+                isTemplateModalOpen && (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[80vh] flex flex-col">
+                            <div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-xl">
+                                <h3 className="font-bold text-lg">Cargar Plantilla</h3>
+                                <button onClick={() => setIsTemplateModalOpen(false)} className="text-gray-500 hover:text-black text-2xl font-light">&times;</button>
+                            </div>
+                            <div className="p-4 overflow-y-auto flex-1 space-y-2">
+                                {availableTemplates.length === 0 ? (
+                                    <p className="text-center text-gray-500">No se encontraron plantillas.</p>
+                                ) : (
+                                    availableTemplates.map(t => (
+                                        <button
+                                            key={t.id}
+                                            onClick={() => handleLoadTemplate(t.id)}
+                                            className="w-full text-left p-4 hover:bg-purple-50 border border-gray-200 hover:border-purple-200 rounded-lg group transition-colors"
+                                        >
+                                            <div className="font-bold text-gray-800 group-hover:text-purple-700">{t.name}</div>
+                                            <div className="text-xs text-gray-500">{t.description || "Sin descripción"}</div>
+                                        </button>
+                                    ))
+                                )}
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 }
