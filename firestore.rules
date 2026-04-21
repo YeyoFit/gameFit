@@ -28,13 +28,11 @@ service cloud.firestore {
     }
 
     // 3. Workout Logs (Métricas: escribir pesos y repeticiones)
-    // Usuarios pueden escribir los pesajes de los ejercicios que les toca
     match /workout_logs/{logId} {
       allow read, write: if request.auth != null; 
     }
 
     // 4. Catálogos globales (Plantillas y Ejercicios maestros)
-    // El usuario solo lee. Solo el admin puede añadir ejercicios nuevos a la base de datos o plantillas
     match /exercises/{docId} {
       allow read: if request.auth != null;
       allow write: if isAdmin(); 
@@ -48,7 +46,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // 5. Mensajes / Reportes adicionales (Cualquier colección extra de chat/reportes)
+    // 5. Mediciones / Cliente
+    match /client_measurements/{mId} {
+      allow read, write: if isAdmin() || (request.auth != null && (resource == null || resource.data.user_id == request.auth.uid) && (request.resource == null || request.resource.data.user_id == request.auth.uid));
+    }
+
+    // 6. Mensajes / Reportes adicionales (Cualquier colección extra de chat/reportes)
     match /progress_reports/{reportId} {
       allow read, update: if isAdmin() || (resource != null && resource.data.user_id == request.auth.uid);
       allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;

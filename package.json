@@ -16,6 +16,7 @@
     "clsx": "^2.1.1",
     "dotenv": "^17.2.3",
     "firebase": "^11.1.0",
+    "firebase-admin": "^13.8.0",
     "lucide-react": "^0.562.0",
     "next": "16.1.4",
     "openai": "^6.34.0",
@@ -23,10 +24,10 @@
     "react-dom": "19.2.3",
     "recharts": "^3.6.0",
     "resend": "^6.8.0",
-    "tailwind-merge": "^3.4.0",
-    "vercel": "^50.18.0"
+    "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
+    "vercel": "^50.18.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

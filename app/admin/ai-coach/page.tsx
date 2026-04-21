@@ -36,14 +36,18 @@ export default function AICoachPage() {
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
-        const fetchClients = async () => {
-            const firestore = db;
-            if (!firestore) return;
-            const q = query(collection(firestore, 'users'), where('role', '==', 'user'));
-            const snap = await getDocs(q);
-            setClients(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        const fetchData = async () => {
+            try {
+                const res = await fetch("/api/ai-coach");
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                setClients(data.clients || []);
+            } catch (err: any) {
+                console.error("Error fetching data:", err);
+                alert("Error al cargar atletas: " + err.message);
+            }
         };
-        fetchClients();
+        fetchData();
     }, []);
 
     const handleGenerate = async () => {
