@@ -12,12 +12,10 @@ const firebaseConfig = {
     appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
 };
 
-console.log("Initializing Firebase with config (apiKey present):", !!firebaseConfig.apiKey);
-
-let app: FirebaseApp | undefined;
-let auth: Auth | undefined;
-let db: Firestore | undefined;
-let storage: FirebaseStorage | undefined;
+let app: any;
+let auth: any;
+let db: any;
+let storage: any;
 
 try {
     if (firebaseConfig.apiKey) {
@@ -25,13 +23,9 @@ try {
         auth = getAuth(app);
         db = getFirestore(app);
         storage = getStorage(app);
-        console.log("Firebase services initialized successfully");
-    } else {
-        console.warn("Firebase API key is missing. Authentication and database features will not work.");
     }
 } catch (error) {
-    console.error("Error initializing Firebase:", error);
+    console.error("Firebase Initialization Error:", error);
 }
 
-// Export as non-null type for convenience, but they could be undefined at runtime if config is missing
 export { app, auth, db, storage };

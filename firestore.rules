@@ -1,0 +1,66 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Función para comprobar si el usuario es admin o super_admin
+    function isAdmin() {
+      return request.auth != null && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'super_admin'];
+    }
+
+    // Función para comprobar que es el propietario
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // 1. Usuarios: Cada uno lee su propio perfil, admin lee/gestiona todos.
+    match /users/{userId} {
+      allow read, write: if isOwner(userId) || isAdmin();
+    }
+
+    // 2. Entrenamientos (Workouts):
+    // - El usuario SOLO PUEDE LEER SUS ENTRENAMIENTOS y ACTUALIZARLOS (ej: para añadir un mensaje al coach).
+    // - El usuario NO PUEDE crear entrenamientos nuevos ni borrarlos.
+    // - El admin puede crear, modificar, borrar y leer todos.
+    match /workouts/{workoutId} {
+      allow read, update: if isAdmin() || (resource != null && resource.data.user_id == request.auth.uid);
+      allow create, delete: if isAdmin();
+    }
+
+    // 3. Workout Logs (Métricas: escribir pesos y repeticiones)
+    // Usuarios pueden escribir los pesajes de los ejercicios que les toca
+    match /workout_logs/{logId} {
+      allow read, write: if request.auth != null; 
+    }
+
+    // 4. Catálogos globales (Plantillas y Ejercicios maestros)
+    // El usuario solo lee. Solo el admin puede añadir ejercicios nuevos a la base de datos o plantillas
+    match /exercises/{docId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin(); 
+    }
+    match /workout_templates/{docId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+    match /workout_template_exercises/{docId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+
+    // 5. Mensajes / Reportes adicionales (Cualquier colección extra de chat/reportes)
+    match /progress_reports/{reportId} {
+      allow read, update: if isAdmin() || (resource != null && resource.data.user_id == request.auth.uid);
+      allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;
+      allow delete: if isAdmin();
+    }
+    
+    match /messages/{messageId} {
+      allow read, write: if request.auth != null;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

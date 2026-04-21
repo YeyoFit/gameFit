@@ -3,7 +3,7 @@
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Users, Search, Activity, FileText, Trash2 } from "lucide-react";
+import { Users, Search, Activity, FileText, Trash2, Brain, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs, orderBy, limit, doc, deleteDoc, writeBatch } from "firebase/firestore";
@@ -170,15 +170,18 @@ export default function AdminDashboard() {
                     </div>
                 </div>
 
-                {/* Exercise Library Card */}
-                <Link href="/admin/exercises" className="bg-white dark:bg-surface p-6 rounded-lg shadow-sm border border-border hover:border-primary transition-colors cursor-pointer group">
-                    <div className="flex items-center space-x-4">
-                        <div className="bg-blue-100 dark:bg-blue-900 p-3 rounded-full text-primary group-hover:bg-primary group-hover:text-white transition-colors">
-                            <FileText className="w-6 h-6" />
+                {/* AI Coach Card */}
+                <Link href="/admin/ai-coach" className="bg-gradient-to-br from-indigo-600 to-blue-700 p-6 rounded-lg shadow-sm hover:shadow-xl transition-all cursor-pointer group relative overflow-hidden">
+                    <div className="absolute top-0 right-0 -mt-4 -mr-4 text-white/10 group-hover:scale-110 transition-transform">
+                        <Brain className="w-24 h-24" />
+                    </div>
+                    <div className="flex items-center space-x-4 relative z-10">
+                        <div className="bg-white/20 backdrop-blur-sm p-3 rounded-full text-white">
+                            <Sparkles className="w-6 h-6" />
                         </div>
                         <div>
-                            <p className="text-muted text-sm font-bold uppercase group-hover:text-primary transition-colors">Biblioteca de Ejercicios</p>
-                            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Gestionar Ejercicios</p>
+                            <p className="text-white/80 text-sm font-bold uppercase tracking-wider">Coach Científico IA</p>
+                            <p className="text-white font-medium text-xs">Generar programación con OpenAI</p>
                         </div>
                     </div>
                 </Link>
