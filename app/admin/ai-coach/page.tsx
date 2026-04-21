@@ -62,7 +62,10 @@ export default function AICoachPage() {
                 headers: { "Content-Type": "application/json" }
             });
             const data = await res.json();
-            if (data.error) throw new Error(data.error);
+            if (data.error) {
+                const debugInfo = data.debug ? `\nDetalle: ${data.debug}` : "";
+                throw new Error(`${data.error}${debugInfo}`);
+            }
             setAiResult(data);
         } catch (err: any) {
             alert("Error: " + err.message);

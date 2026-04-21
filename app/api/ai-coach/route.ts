@@ -166,15 +166,10 @@ RESPONSE FORMAT (JSON):
         return NextResponse.json(JSON.parse(content || "{}"));
 
     } catch (error: any) {
-        console.error("AI Coach Full Error Details:", {
-            message: error.message,
-            stack: error.stack,
-            code: error.code,
-            details: error.details
-        });
+        console.error("AI Coach Full Error:", error);
         return NextResponse.json({ 
-            error: "Error de permisos o comunicación con la base de datos.", 
-            debug: error.message 
+            error: error.message, // Return the specific "Fallo al leer..." message
+            debug: error.stack
         }, { status: 500 });
     }
 }
