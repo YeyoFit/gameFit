@@ -69,14 +69,17 @@ export async function POST(req: Request) {
         try {
             const workoutsSnap = await adminDb.collection('workouts')
                 .where('user_id', '==', clientId)
-                .orderBy('date', 'desc')
-                .limit(5)
                 .get();
             
-            for (const wDoc of workoutsSnap.docs) {
-                const wData = wDoc.data();
+            // Sort in memory to avoid composite index requirement
+            const workoutDocs = workoutsSnap.docs
+                .map(doc => ({ id: doc.id, ...doc.data() }))
+                .sort((a: any, b: any) => b.date.localeCompare(a.date))
+                .slice(0, 5);
+
+            for (const wData of workoutDocs) {
                 const logsSnap = await adminDb.collection('workout_logs')
-                    .where('workout_id', '==', wDoc.id)
+                    .where('workout_id', '==', wData.id)
                     .get();
                     
                 const logs = logsSnap.docs.map(l => ({
@@ -88,8 +91,8 @@ export async function POST(req: Request) {
                     completed: l.data().completed
                 }));
                 lastWorkouts.push({
-                    name: wData.name,
-                    date: wData.date,
+                    name: (wData as any).name,
+                    date: (wData as any).date,
                     logs
                 });
             }
@@ -102,11 +105,13 @@ export async function POST(req: Request) {
         try {
             const mSnap = await adminDb.collection('client_measurements')
                 .where('user_id', '==', clientId)
-                .orderBy('recorded_at', 'desc')
-                .limit(1)
                 .get();
                 
-            lastMeasurement = mSnap.docs.length > 0 ? mSnap.docs[0].data() : null;
+            const mDocs = mSnap.docs
+                .map(doc => doc.data())
+                .sort((a: any, b: any) => b.recorded_at.localeCompare(a.recorded_at));
+
+            lastMeasurement = mDocs.length > 0 ? mDocs[0] : null;
         } catch (e: any) {
             throw new Error(`Fallo al leer MEDICIONES: ${e.message}`);
         }
