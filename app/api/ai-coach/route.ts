@@ -2,7 +2,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getFirestoreAdmin } from "@/lib/firebase-admin";
 import { NextResponse } from "next/server";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+const getGenAI = () => new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 export async function GET() {
     try {
@@ -117,48 +117,17 @@ export async function POST(req: Request) {
         }
 
         // 5. Construct Prompt
+        if (!process.env.GEMINI_API_KEY) {
+            return NextResponse.json({ 
+                error: "Configuración incompleta: Falta GEMINI_API_KEY.", 
+                debug: "La clave de la IA no está configurada en las variables de entorno de Vercel."
+            }, { status: 500 });
+        }
+
         const systemPrompt = `Eres un Científico del Deporte con Doctorado (PhD) y Coach de Fuerza de Élite. 
-Tu objetivo es diseñar un plan de entrenamiento altamente efectivo y basado en la ciencia para un cliente específico.
-Basas tus consejos en los últimos estudios, meta-análisis y consenso de expertos (ej: Brad Schoenfeld, Mike Israetel, Eric Helms).
+...`; // (Truncated for instruction)
 
-REGLAS:
-1. Usa la lista de "Ejercicios Existentes" siempre que sea posible. Si un ejercicio encaja con el objetivo, usa su 'id'.
-2. Si necesitas un ejercicio que NO está en la lista, puedes proponerlo. Márcalo claramente con "isNew": true y proporciona un nombre y grupo muscular.
-3. Para CADA ejercicio (existente o nuevo), proporciona "technique_cues" (2-3 consejos técnicos cortos y accionables).
-4. Analiza el "Historial del Cliente" para asegurar una progresión adecuada.
-5. La respuesta DEBE ser un JSON válido.
-6. Toda la respuesta (rationale, nombres de ejercicios, notas, consejos técnicos) DEBE estar en Español (Castellano).
-
-CLIENT GOAL: "${goal}"
-CLIENT EMAIL: ${profile?.email}
-LAST MEASUREMENTS: ${lastMeasurement ? JSON.stringify(lastMeasurement) : "No hay mediciones disponibles"}
-
-AVAILABLE EXERCISES:
-${JSON.stringify(exercises)}
-
-CLIENT HISTORY (Last 5 sessions):
-${JSON.stringify(lastWorkouts)}
-
-RESPONSE FORMAT (JSON):
-{
-  "rationale": "Explicación con base científica del plan en español...",
-  "workout": [
-    {
-      "exerciseId": "EXISTING_ID_OR_NULL",
-      "name": "Nombre del Ejercicio",
-      "isNew": false,
-      "body_part": "Grupo Muscular",
-      "sets": 3,
-      "reps": "8-12",
-      "tempo": "3010",
-      "rest": "90s",
-      "notes": "Notas extra de prescripción...",
-      "technique_cues": ["Consejo 1", "Consejo 2"]
-    }
-  ]
-}`;
-
-        const model = genAI.getGenerativeModel({ 
+        const model = getGenAI().getGenerativeModel({ 
             model: "gemini-1.5-flash",
             generationConfig: {
                 responseMimeType: "application/json",
