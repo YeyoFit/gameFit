@@ -136,7 +136,7 @@ export async function POST(req: Request) {
         
         REGLAS CRÍTICAS:
         1. Debes responder EXCLUSIVAMENTE con un objeto JSON válido.
-        2. No incluyas texto antes o después del JSON. No uses bloques de código markdown (```json).
+        2. No incluyas texto antes o después del JSON. No uses bloques de código markdown (\` \` \`json).
         3. El rationale debe ser una explicación técnica corta (2-3 frases) de por qué elegiste este volumen/intensidad.
         
         ESTRUCTURA JSON:
