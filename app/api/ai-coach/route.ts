@@ -117,22 +117,59 @@ export async function POST(req: Request) {
         }
 
         // 5. Construct Prompt
-        if (!process.env.GEMINI_API_KEY) {
-            return NextResponse.json({ 
-                error: "Configuración incompleta: Falta GEMINI_API_KEY.", 
-                debug: "La clave de la IA no está configurada en las variables de entorno de Vercel."
-            }, { status: 500 });
+        const systemPrompt = `Eres un Científico del Deporte con Doctorado (PhD) y Coach de Fuerza de Élite (vanguardia en Biomecánica y Fisiología).
+        
+        CONTEXTO DEL ATLETA:
+        - Perfil: ${JSON.stringify(profile)}
+        - Últimas Mediciones: ${JSON.stringify(lastMeasurement)}
+        - Últimos 5 Entrenamientos: ${JSON.stringify(lastWorkouts)}
+        
+        BIBLIOTECA DE EJERCICIOS DISPONIBLES:
+        ${JSON.stringify(exercises)}
+        
+        OBJETIVO DEL ENTRENAMIENTO:
+        "${goal}"
+        
+        TAREA:
+        Diseña una única sesión de entrenamiento ultra-personalizada basada en evidencia científica. 
+        Si el objetivo requiere un ejercicio que NO está en la biblioteca, márcalo como 'isNew: true' y sugiere uno excelente.
+        
+        REGLAS CRÍTICAS:
+        1. Debes responder EXCLUSIVAMENTE con un objeto JSON válido.
+        2. No incluyas texto antes o después del JSON. No uses bloques de código markdown (```json).
+        3. El rationale debe ser una explicación técnica corta (2-3 frases) de por qué elegiste este volumen/intensidad.
+        
+        ESTRUCTURA JSON:
+        {
+          "rationale": "Breve explicación científica...",
+          "workout": [
+            {
+              "exerciseId": "id_de_la_biblioteca_o_null",
+              "name": "Nombre exacto",
+              "isNew": false,
+              "body_part": "Pecho/Espalda/etc",
+              "sets": 4,
+              "reps": "8-12",
+              "tempo": "3011",
+              "rest": "90s",
+              "notes": "Instrucción técnica clave",
+              "technique_cues": ["Cue 1", "Cue 2"]
+            }
+          ]
         }
-
-        const systemPrompt = `Eres un Científico del Deporte con Doctorado (PhD) y Coach de Fuerza de Élite. 
-...`; // (Truncated for instruction)
+        `;
 
         const model = getGenAI().getGenerativeModel({ 
-            model: "gemini-1.5-flash", 
+            model: "gemini-2.0-flash", 
         });
 
         const result = await model.generateContent(systemPrompt);
-        const content = result.response.text();
+        let content = result.response.text().trim();
+        
+        // Remove markdown formatting if present
+        if (content.startsWith("```")) {
+            content = content.replace(/^```json\n?/, "").replace(/\n?```$/, "");
+        }
         
         return NextResponse.json(JSON.parse(content || "{}"));
 
