@@ -34,6 +34,7 @@ export default function AICoachPage() {
     const [goal, setGoal] = useState("");
     const [loading, setLoading] = useState(false);
     const [aiResult, setAiResult] = useState<AIResponse | null>(null);
+    const [workoutName, setWorkoutName] = useState("");
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
@@ -68,6 +69,7 @@ export default function AICoachPage() {
                 throw new Error(`${data.error}${debugInfo}`);
             }
             setAiResult(data);
+            setWorkoutName(`Plan: ${goal.split(' ').slice(0, 3).join(' ')}`);
         } catch (err: any) {
             alert("Error: " + err.message);
         } finally {
@@ -85,7 +87,7 @@ export default function AICoachPage() {
             // 1. Create Workout
             const workoutRef = await addDoc(collection(db, 'workouts'), {
                 user_id: selectedClientId,
-                name: `IA: ${goal.slice(0, 20)}...`,
+                name: workoutName || "Nuevo Entrenamiento IA",
                 date: new Date().toISOString().split('T')[0],
                 created_at: new Date().toISOString(),
                 is_ai_generated: true,
@@ -331,6 +333,17 @@ export default function AICoachPage() {
                                                 Se crearán nuevos ejercicios al aprobar
                                             </div>
                                         )}
+                                        
+                                        <div className="flex-1 max-w-xs mr-4">
+                                            <input 
+                                                type="text"
+                                                value={workoutName}
+                                                onChange={(e) => setWorkoutName(e.target.value)}
+                                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-sm font-bold"
+                                                placeholder="Nombre del Plan..."
+                                            />
+                                        </div>
+
                                         <button
                                             onClick={handleSaveAsWorkout}
                                             disabled={saving}
