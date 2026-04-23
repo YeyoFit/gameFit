@@ -11,6 +11,7 @@ import { clsx } from "clsx";
 type Exercise = {
     exerciseId: string | null;
     name: string;
+    order: string;
     isNew: boolean;
     body_part: string;
     sets: number;
@@ -115,6 +116,8 @@ export default function AICoachPage() {
                         workout_id: workoutRef.id,
                         exercise_id: exerciseId,
                         set_number: i,
+                        day_number: 1,
+                        exercise_order: ex.order || "A",
                         target_reps: ex.reps,
                         tempo: ex.tempo,
                         rest_time: ex.rest,

@@ -146,6 +146,7 @@ export async function POST(req: Request) {
             {
               "exerciseId": "id_de_la_biblioteca_o_null",
               "name": "Nombre exacto",
+              "order": "A1",
               "isNew": false,
               "body_part": "Pecho/Espalda/etc",
               "sets": 4,
