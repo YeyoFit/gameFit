@@ -160,7 +160,7 @@ export async function POST(req: Request) {
         `;
 
         const model = getGenAI().getGenerativeModel({ 
-            model: "gemini-1.5-flash-latest", 
+            model: "gemini-flash-latest", 
         });
 
         const result = await model.generateContent(systemPrompt);
