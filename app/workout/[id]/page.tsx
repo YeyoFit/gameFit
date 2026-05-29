@@ -18,6 +18,7 @@ type DbWorkout = {
     name: string;
     date: string;
     occurrences: number;
+    user_id: string;
     coach_feedback?: string;
 };
 
@@ -165,8 +166,8 @@ export default function WorkoutExecutionPage() {
                     group.logs.push({
                         id: log.id, // Store doc ID for updates
                         setNumber: log.set_number,
-                        weight: isCompleted ? log.weight : null,
-                        reps: isCompleted ? log.reps : null,
+                        weight: log.weight !== undefined && log.weight !== null ? log.weight : null,
+                        reps: log.reps !== undefined && log.reps !== null ? log.reps : null,
                         prevWeight: undefined,
                         prevReps: undefined,
                         completed: isCompleted,
@@ -284,28 +285,33 @@ export default function WorkoutExecutionPage() {
         if (!workout || !firestore) return;
         setSaving(true);
 
+        const isAdmin = role === 'admin' || role === 'super_admin';
+
         try {
             const batch = writeBatch(firestore);
             const logsRef = collection(firestore, 'workout_logs');
-            const exercisesToSave = dayData[activeDay] || [];
             let updateCount = 0;
 
-            exercisesToSave.forEach(ex => {
-                ex.logs.forEach(log => {
-                    // Update only if log has an ID (it should)
-                    if (log.id) { // Use ID from our state (added in fetch)
-                        const logDocRef = doc(logsRef, log.id); // Assuming log.id is stored
-                        batch.update(logDocRef, {
-                            weight: log.weight,
-                            reps: log.reps,
-                            completed: log.completed || false,
-                            video_url: log.videoUrl || null
-                        });
-                        updateCount++;
-                    } else {
-                        // If for some reason ID is missing (should not happen if fetched correctly)
-                        console.warn("Log missing ID, skipping update", log);
-                    }
+            // Save changes across all days
+            Object.values(dayData).forEach(exercisesToSave => {
+                exercisesToSave.forEach(ex => {
+                    ex.logs.forEach(log => {
+                        // Update only if log has an ID (it should)
+                        if (log.id) { // Use ID from our state (added in fetch)
+                            const logDocRef = doc(logsRef, log.id); // Assuming log.id is stored
+                            batch.update(logDocRef, {
+                                weight: log.weight,
+                                reps: log.reps,
+                                completed: log.completed || false,
+                                video_url: log.videoUrl || null,
+                                coach_comment: log.coachComment || null
+                            });
+                            updateCount++;
+                        } else {
+                            // If for some reason ID is missing (should not happen if fetched correctly)
+                            console.warn("Log missing ID, skipping update", log);
+                        }
+                    });
                 });
             });
 
@@ -314,10 +320,15 @@ export default function WorkoutExecutionPage() {
             }
 
             // Optional: Show PR Summary before leaving?
-            if (newPRs > 0) {
+            if (newPRs > 0 && !isAdmin) {
                 alert(`Great job! You set ${newPRs} new Personal Records today! 🏆`);
             }
-            router.push('/dashboard');
+
+            if (isAdmin) {
+                router.push(`/admin/users/${workout.user_id}`);
+            } else {
+                router.push('/dashboard');
+            }
 
         } catch (error) {
             console.error(error);
@@ -526,7 +537,7 @@ export default function WorkoutExecutionPage() {
                         className="bg-primary hover:bg-blue-900 text-white font-bold py-3 px-6 rounded shadow flex items-center justify-center ml-auto"
                     >
                         {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                        {saving ? "Saving..." : "Finish Workout"}
+                        {saving ? "Saving..." : ((role === 'admin' || role === 'super_admin') ? "Save Changes" : "Finish Workout")}
                     </button>
                 </div>
             </div>
